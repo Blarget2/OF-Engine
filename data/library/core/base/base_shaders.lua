@@ -23,19 +23,19 @@ module("shader", package.seeall)
 
 --[[!
     Variable: SHADER_GLSL
-    Has value of <math.lsh> (1, 2). See <std>.
+    Has value of <std.math.lsh> (1, 2). See <std>.
 ]]
 SHADER_GLSL = math.lsh(1, 2)
 
 --[[!
     Variable: SHADER_NORMAL
-    Has value of <math.lsh> (1, 0). See <std>.
+    Has value of <std.math.lsh> (1, 0). See <std>.
 ]]
 SHADER_NORMAL = math.lsh(1, 0)
 
 --[[!
     Variable: SHADER_ENVMAP
-    Has value of <math.lsh> (1, 1). See <std>.
+    Has value of <std.math.lsh> (1, 1). See <std>.
 ]]
 SHADER_ENVMAP = math.lsh(1, 1)
 

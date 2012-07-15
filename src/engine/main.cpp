@@ -18,7 +18,7 @@ void cleanup()
     SDL_WM_GrabInput(SDL_GRAB_OFF);
     cleargamma();
     freeocta(worldroot);
-    var::clear();
+    varsys::clear();
     extern void clear_console(); clear_console();
     extern void clear_mdls();    clear_mdls();
     extern void clear_sound();   clear_sound();
@@ -26,15 +26,7 @@ void cleanup()
     SDL_Quit();
 }
 
-void force_quit(); // INTENSITY
-
 void quit()                     // normal exit
-{
-    if (!EditingSystem::madeChanges) force_quit();
-    lapi::state.get<lua::Function>("gui", "show")("can_quit");
-}
-
-void force_quit() // INTENSITY - change quit to force_quit
 {
     extern void writeinitcfg();
     writeinitcfg();
@@ -45,7 +37,7 @@ void force_quit() // INTENSITY - change quit to force_quit
     tools::writecfg();
     cleanup();
 
-    var::flush();
+    varsys::flush();
 
     exit(EXIT_SUCCESS);
 }
@@ -69,7 +61,7 @@ void fatal(const char *s, ...)    // failure exit
                 cleargamma();
             }
             #ifdef WIN32
-                MessageBox(NULL, msg, "Cube 2: Sauerbraten fatal error", MB_OK|MB_SYSTEMMODAL);
+                MessageBox(NULL, msg, "OctaForge fatal error", MB_OK|MB_SYSTEMMODAL);
             #endif
             SDL_Quit();
         }
@@ -80,12 +72,11 @@ void fatal(const char *s, ...)    // failure exit
 
 SDL_Surface *screen = NULL;
 
-int curtime = 0, totalmillis = 1, lastmillis = 1, skymillis = 1; // INTENSITY: SkyManager: add skymillis, for syncing
+int curtime = 0, totalmillis = 1, lastmillis = 1;
 
 dynent *player = NULL;
 
 int initing = NOT_INITING;
-static bool restoredinits = false;
 
 bool initwarning(const char *desc, int level, int type)
 {
@@ -113,25 +104,24 @@ VARF(vsync, -1, -1, 1, initwarning("vertical sync"));
 
 void writeinitcfg()
 {
-    if(!restoredinits) return;
     stream *f = openutf8file("init.lua", "w");
     if(!f) return;
     f->printf("-- automatically written on exit, DO NOT MODIFY\n-- modify settings in game\n");
-    extern int& fullscreen, &useshaders, &shaderprecision, &forceglsl, &soundchans, &soundfreq, &soundbufferlen;
-    f->printf("fullscreen = %d\n", fullscreen);
-    f->printf("scr_w = %d\n", scr_w);
-    f->printf("scr_h = %d\n", scr_h);
-    f->printf("colorbits = %d\n", colorbits);
-    f->printf("depthbits = %d\n", depthbits);
-    f->printf("stencilbits = %d\n", stencilbits);
-    f->printf("fsaa = %d\n", fsaa);
-    f->printf("vsync = %d\n", vsync);
-    f->printf("shaders = %d\n", useshaders);
-    f->printf("shaderprecision = %d\n", shaderprecision);
-    f->printf("forceglsl = %d\n", forceglsl);
-    f->printf("soundchans = %d\n", soundchans);
-    f->printf("soundfreq = %d\n", soundfreq);
-    f->printf("soundbufferlen = %d\n", soundbufferlen);
+    extern int fullscreen, shaderprecision, glineardepth, sound, soundchans, soundfreq, soundbufferlen;
+    f->printf("EVAR.fullscreen = %d\n", fullscreen);
+    f->printf("EVAR.scr_w = %d\n", scr_w);
+    f->printf("EVAR.scr_h = %d\n", scr_h);
+    f->printf("EVAR.colorbits = %d\n", colorbits);
+    f->printf("EVAR.depthbits = %d\n", depthbits);
+    f->printf("EVAR.stencilbits = %d\n", stencilbits);
+    f->printf("EVAR.fsaa = %d\n", fsaa);
+    f->printf("EVAR.vsync = %d\n", vsync);
+    f->printf("EVAR.shaderprecision = %d\n", shaderprecision);
+    f->printf("EVAR.glineardepth = %d\n", glineardepth);
+    f->printf("EVAR.sound = %d\n", sound);
+    f->printf("EVAR.soundchans = %d\n", soundchans);
+    f->printf("EVAR.soundfreq = %d\n", soundfreq);
+    f->printf("EVAR.soundbufferlen = %d\n", soundbufferlen);
     delete f;
 }
 
@@ -160,7 +150,7 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
 {
     if(!inbetweenframes && !force) return;
 
-    if (!gui::mainmenu) stopsounds(); // stop sounds while loading
+    stopsounds(); // stop sounds while loading
  
     int w = screen->w, h = screen->h;
     getbackgroundres(w, h);
@@ -177,9 +167,11 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
 
     static int lastupdate = -1, lastw = -1, lasth = -1;
     static float backgroundu = 0, backgroundv = 0;
+#if 0
+    static float detailu = 0, detailv = 0;
     static int numdecals = 0;
     static struct decal { float x, y, size; int side; } decals[12];
-
+#endif
     if((renderedframe && !gui::mainmenu && lastupdate != lastmillis) || lastw != w || lasth != h)
     {
         lastupdate = lastmillis;
@@ -188,6 +180,18 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
 
         backgroundu = rndscale(1);
         backgroundv = rndscale(1);
+#if 0
+        detailu = rndscale(1);
+        detailv = rndscale(1);
+        numdecals = sizeof(decals)/sizeof(decals[0]);
+        numdecals = numdecals/3 + rnd((numdecals*2)/3 + 1);
+        float maxsize = min(w, h)/16.0f;
+        loopi(numdecals)
+        {
+            decal d = { rndscale(w), rndscale(h), maxsize/2 + rndscale(maxsize/2), rnd(2) };
+            decals[i] = d;
+        }
+#endif
     }
     else if(lastupdate != lastmillis) lastupdate = lastmillis;
 
@@ -202,7 +206,18 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
         glTexCoord2f(0,  bv); glVertex2f(0, h);
         glTexCoord2f(bu, bv); glVertex2f(w, h);
         glEnd();
-        settexture("data/textures/ui/background_decal.png", 3);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_BLEND);
+#if 0
+        settexture("<premul>data/textures/ui/background_detail.png", 0);
+        float du = w*0.8f/512.0f + detailu, dv = h*0.8f/512.0f + detailv;
+        glBegin(GL_TRIANGLE_STRIP);
+        glTexCoord2f(0,  0);  glVertex2f(0, 0);
+        glTexCoord2f(du, 0);  glVertex2f(w, 0);
+        glTexCoord2f(0,  dv); glVertex2f(0, h);
+        glTexCoord2f(du, dv); glVertex2f(w, h);
+        glEnd();
+        settexture("<premul>data/textures/ui/background_decal.png", 3);
         glBegin(GL_QUADS);
         loopj(numdecals)
         {
@@ -213,9 +228,10 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
             glTexCoord2f(side,   1); glVertex2f(hx-hsz, hy+hsz);
         }
         glEnd();
+#endif
         float lh = 0.5f*min(w, h), lw = lh*2,
               lx = 0.5f*(w - lw), ly = 0.5f*(h*0.5f - lh);
-        settexture((maxtexsize ? min(maxtexsize, hwtexsize) : hwtexsize) >= 1024 && (screen->w > 1280 || screen->h > 800) ? "data/textures/ui/logo.png" : "data/textures/ui/logo.png", 3); // INTENSITY: First was suffixed '_1024', but we use a single hi-res one
+        settexture(/*(maxtexsize ? min(maxtexsize, hwtexsize) : hwtexsize) >= 1024 && (screen->w > 1280 || screen->h > 800) ? "<premul>data/logo_1024.png" :*/ "<premul>data/textures/ui/logo.png", 3);
         glBegin(GL_TRIANGLE_STRIP);
         glTexCoord2f(0, 0); glVertex2f(lx,    ly);
         glTexCoord2f(1, 0); glVertex2f(lx+lw, ly);
@@ -223,6 +239,19 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
         glTexCoord2f(1, 1); glVertex2f(lx+lw, ly+lh);
         glEnd();
 
+#if 0
+        float bh = 0.1f*min(w, h), bw = bh*2,
+              bx = w - 1.1f*bw, by = h - 1.1f*bh;
+        settexture("<premul>data/textures/ui/cube2badge.png", 3);
+        glBegin(GL_TRIANGLE_STRIP);
+        glTexCoord2f(0, 0); glVertex2f(bx,    by);
+        glTexCoord2f(1, 0); glVertex2f(bx+bw, by);
+        glTexCoord2f(0, 1); glVertex2f(bx,    by+bh);
+        glTexCoord2f(1, 1); glVertex2f(bx+bw, by+bh);
+        glEnd();
+#endif
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         if(caption)
         {
             int tw = text_width(caption);
@@ -253,8 +282,6 @@ void renderbackground(const char *caption, Texture *mapshot, const char *mapname
                 glTexCoord2f(0, 1); glVertex2f(x,    y+sz);
                 glTexCoord2f(1, 1); glVertex2f(x+sz, y+sz);
                 glEnd();
-                glEnable(GL_BLEND); // INTENSITY
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // INTENSITY
             }
             else
             {
@@ -329,7 +356,7 @@ void renderprogress(float bar, const char *text, GLuint tex, bool background)   
     interceptkey(SDLK_UNKNOWN); // keep the event queue awake to avoid 'beachball' cursor
     #endif
 
-    extern int& sdl_backingstore_bug;
+    extern int sdl_backingstore_bug;
     if(background || sdl_backingstore_bug > 0) restorebackground();
 
     int w = screen->w, h = screen->h;
@@ -531,8 +558,6 @@ void screenres(int *w, int *h)
     scr_h = screen->h;
     glViewport(0, 0, scr_w, scr_h);
 #endif
-    extern int& fonth;
-    fonth = FONTH;
 }
 
 static int curgamma = 100;
@@ -635,7 +660,7 @@ void setupscreen(int &usedcolorbits, int &useddepthbits, int &usedfsaa)
     };
     int config = 0;
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-    if(!depthbits) SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     if(!fsaa)
     {
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
@@ -647,7 +672,7 @@ void setupscreen(int &usedcolorbits, int &useddepthbits, int &usedfsaa)
         if(!depthbits && config&1) continue;
         if(!stencilbits && config&2) continue;
         if(fsaa<=0 && config&4) continue;
-        if(depthbits) SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, config&1 ? depthbits : 16);
+        if(depthbits) SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, config&1 ? depthbits : 0);
         if(stencilbits)
         {
             hasstencil = config&2 ? stencilbits : 0;
@@ -690,12 +715,9 @@ void resetgl()
     extern void cleanupsky();
     extern void cleanupmodels();
     extern void cleanuptextures();
-    extern void cleanuplightmaps();
     extern void cleanupblendmap();
     extern void cleanshadowmap();
-    extern void cleanreflections();
     extern void cleanupglare();
-    extern void cleanupdepthfx();
     extern void cleanupshaders();
     extern void cleanupgl();
     recorder::cleanup();
@@ -704,12 +726,7 @@ void resetgl()
     cleanupsky();
     cleanupmodels();
     cleanuptextures();
-    cleanuplightmaps();
     cleanupblendmap();
-    cleanshadowmap();
-    cleanreflections();
-    cleanupglare();
-    cleanupdepthfx();
     cleanupshaders();
     cleanupgl();
     
@@ -724,11 +741,16 @@ void resetgl()
     extern void reloadshaders();
     inbetweenframes = false;
     if(!reloadtexture(*notexture) ||
-       !reloadtexture("data/textures/ui/logo.png") ||
-       !reloadtexture("data/textures/ui/logo_1024.png") || 
+       !reloadtexture("<premul>data/textures/ui/logo.png") ||
+       !reloadtexture("<premul>data/textures/ui/logo_1024.png") ||
+#if 0
+       !reloadtexture("<premul>data/textures/ui/cube2badge.png") ||
+#endif
        !reloadtexture("data/textures/ui/background.png") ||
-       !reloadtexture("data/textures/ui/background_detail.png") ||
-       !reloadtexture("data/textures/ui/background_decal.png") ||
+#if 0
+       !reloadtexture("<premul>data/textures/ui/background_detail.png") ||
+       !reloadtexture("<premul>data/textures/ui/background_decal.png") ||
+#endif
        !reloadtexture("data/textures/ui/mapshot_frame.png") ||
        !reloadtexture("data/textures/ui/loading_frame.png") ||
        !reloadtexture("data/textures/ui/loading_bar.png"))
@@ -743,8 +765,6 @@ void resetgl()
     allchanged(true);
 }
 
-static int ignoremouse = 5;
-
 vector<SDL_Event> events;
 
 void pushevent(const SDL_Event &e)
@@ -752,15 +772,48 @@ void pushevent(const SDL_Event &e)
     events.add(e); 
 }
 
+static bool filterevent(const SDL_Event &event)
+{
+    switch(event.type)
+    {
+        case SDL_MOUSEMOTION:
+            #ifndef WIN32
+            if(grabinput && !(screen->flags&SDL_FULLSCREEN))
+            {
+                if(event.motion.x == screen->w / 2 && event.motion.y == screen->h / 2) 
+                    return false;  // ignore any motion events generated by SDL_WarpMouse
+                #ifdef __APPLE__
+                if(event.motion.y == 0) 
+                    return false;  // let mac users drag windows via the title bar
+                #endif
+            }
+            #endif
+            break;
+    }
+    return true;
+}
+
+static inline bool pollevent(SDL_Event &event)
+{
+    while(SDL_PollEvent(&event))
+    {
+        if(filterevent(event)) return true;
+    }
+    return false;
+}
+
 bool interceptkey(int sym)
 {
     static int lastintercept = SDLK_UNKNOWN;
     int len = lastintercept == sym ? events.length() : 0;
     SDL_Event event;
-    while(SDL_PollEvent(&event)) switch(event.type)
+    while(pollevent(event))
     {
-        case SDL_MOUSEMOTION: break;
-        default: pushevent(event); break;
+        switch(event.type)
+        {
+            case SDL_MOUSEMOTION: break;
+            default: pushevent(event); break;
+        }
     }
     lastintercept = sym;
     if(sym != SDLK_UNKNOWN) for(int i = len; i < events.length(); i++)
@@ -770,29 +823,21 @@ bool interceptkey(int sym)
     return false;
 }
 
+static void ignoremousemotion()
+{
+    SDL_Event e;
+    SDL_PumpEvents();
+    while(SDL_PeepEvents(&e, 1, SDL_GETEVENT, SDL_EVENTMASK(SDL_MOUSEMOTION)));
+}
+
 static void resetmousemotion()
 {
 #ifndef WIN32
-    if(!(screen->flags&SDL_FULLSCREEN))
+    if(grabinput && !(screen->flags&SDL_FULLSCREEN))
     {
         SDL_WarpMouse(screen->w / 2, screen->h / 2);
     }
 #endif
-}
-
-static inline bool skipmousemotion(SDL_Event &event)
-{
-    if(event.type != SDL_MOUSEMOTION) return true;
-#ifndef WIN32
-    if(!(screen->flags&SDL_FULLSCREEN))
-    {
-        #ifdef __APPLE__
-        if(event.motion.y == 0) return true;  // let mac users drag windows via the title bar
-        #endif
-        if(event.motion.x == screen->w / 2 && event.motion.y == screen->h / 2) return true;  // ignore any motion events generated SDL_WarpMouse
-    }
-#endif
-    return false;
 }
 
 static void checkmousemotion(int &dx, int &dy)
@@ -800,7 +845,7 @@ static void checkmousemotion(int &dx, int &dy)
     loopv(events)
     {
         SDL_Event &event = events[i];
-        if(skipmousemotion(event)) 
+        if(event.type != SDL_MOUSEMOTION)
         { 
             if(i > 0) events.remove(0, i); 
             return; 
@@ -810,9 +855,9 @@ static void checkmousemotion(int &dx, int &dy)
     }
     events.setsize(0);
     SDL_Event event;
-    while(SDL_PollEvent(&event))
+    while(pollevent(event))
     {
-        if(skipmousemotion(event))
+        if(event.type != SDL_MOUSEMOTION)
         {
             events.add(event);
             return;
@@ -826,7 +871,8 @@ void checkinput()
 {
     SDL_Event event;
     int lasttype = 0, lastbut = 0;
-    while(events.length() || SDL_PollEvent(&event))
+    bool mousemoved = false; 
+    while(events.length() || pollevent(event))
     {
         if(events.length()) event = events.remove(0);
 
@@ -834,7 +880,7 @@ void checkinput()
         {
             case SDL_QUIT:
                 quit();
-                break;
+                return;
 
             #if !defined(WIN32) && !defined(__APPLE__)
             case SDL_VIDEORESIZE:
@@ -859,14 +905,12 @@ void checkinput()
                 break;
 
             case SDL_MOUSEMOTION:
-                if(ignoremouse) { ignoremouse--; break; }
-                if(grabinput && !skipmousemotion(event))
+                if(grabinput)
                 {
                     int dx = event.motion.xrel, dy = event.motion.yrel;
                     checkmousemotion(dx, dy);
-                    resetmousemotion();
-
                     if(!gui::movecursor(dx, dy) && !gui::hascursor()) mousemove(dx, dy);
+                    mousemoved = true;
                 }
                 break;
 
@@ -885,6 +929,7 @@ void checkinput()
                 break;
         }
     }
+    if(mousemoved) resetmousemotion();
 }
 
 void swapbuffers()
@@ -930,7 +975,7 @@ void stackdumper(unsigned int type, EXCEPTION_POINTERS *ep)
     EXCEPTION_RECORD *er = ep->ExceptionRecord;
     CONTEXT *context = ep->ContextRecord;
     string out, t;
-    formatstring(out)("Cube 2: Sauerbraten Win32 Exception: 0x%x [0x%x]\n\n", er->ExceptionCode, er->ExceptionCode==EXCEPTION_ACCESS_VIOLATION ? er->ExceptionInformation[1] : -1);
+    formatstring(out)("Tesseract Win32 Exception: 0x%x [0x%x]\n\n", er->ExceptionCode, er->ExceptionCode==EXCEPTION_ACCESS_VIOLATION ? er->ExceptionInformation[1] : -1);
     STACKFRAME sf = {{context->Eip, 0, AddrModeFlat}, {}, {context->Ebp, 0, AddrModeFlat}, {context->Esp, 0, AddrModeFlat}, 0};
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
 
@@ -964,6 +1009,22 @@ void updatefpshistory(int millis)
 {
     fpshistory[fpspos++] = max(1, min(1000, millis));
     if(fpspos>=MAXFPSHISTORY) fpspos = 0;
+}
+
+void getframemillis(float &avg, float &bestdiff, float &worstdiff)
+{
+    int total = fpshistory[MAXFPSHISTORY-1], best = total, worst = total;
+    loopi(MAXFPSHISTORY-1)
+    {
+        int millis = fpshistory[i];
+        total += millis;
+        if(millis < best) best = millis;
+        if(millis > worst) worst = millis;
+    }
+
+    avg = total/float(MAXFPSHISTORY);
+    best = best - avg;
+    worstdiff = avg - worst;    
 }
 
 void getfps(int &fps, int &bestdiff, int &worstdiff)
@@ -1011,6 +1072,9 @@ int getclockmillis()
     return max(millis, totalmillis);
 }
 
+VAR(frametimer, 0, 0, 1);
+int framemillis = 0; // frame time (ie does not take into account the swap)
+
 int main(int argc, char **argv)
 {
     #ifdef WIN32
@@ -1033,7 +1097,6 @@ int main(int argc, char **argv)
     initing = INIT_RESET;
 
     char *loglevel = (char*)"WARNING";
-    const char *initcfg = NULL;
     for(int i = 1; i<argc; i++)
     {
         if(argv[i][0]=='-') switch(argv[i][1])
@@ -1044,14 +1107,21 @@ int main(int argc, char **argv)
                 if(dir) logoutf("Using home directory: %s", dir);
                 break;
             }
-            case 'k': 
+        }
+    }
+    for(int i = 1; i<argc; i++)
+    {
+        if(argv[i][0]=='-') switch(argv[i][1])
+        {
+            case 'q': /* parsed first */ break;
+            case 'r': /* compat, ignore */ break;
+            case 'k':
             {
                 const char *dir = addpackagedir(&argv[i][2]);
                 if(dir) logoutf("Adding package directory: %s", dir);
                 break;
             }
             case 'g': logoutf("Setting logging level", &argv[i][2]); loglevel = &argv[i][2]; break;
-            case 'r': initcfg = argv[i][2] ? &argv[i][2] : "init.lua"; restoredinits = true; break;
             case 'd': dedicated = atoi(&argv[i][2]); if(dedicated<=0) dedicated = 2; break;
             case 'w': scr_w = clamp(atoi(&argv[i][2]), SCR_MINW, SCR_MAXW); if(!findarg(argc, argv, "-h")) scr_h = -1; break;
             case 'h': scr_h = clamp(atoi(&argv[i][2]), SCR_MINH, SCR_MAXH); if(!findarg(argc, argv, "-w")) scr_w = -1; break;
@@ -1063,11 +1133,9 @@ int main(int argc, char **argv)
             case 's': stencilbits = atoi(&argv[i][2]); break;
             case 'f': 
             {
-                extern int& useshaders, &shaderprecision, &forceglsl;
+                extern int shaderprecision;
                 int n = atoi(&argv[i][2]);
-                useshaders = n > 0 ? 1 : 0;
-                shaderprecision = clamp(n >= 4 ? n - 4 : n - 1, 0, 2);
-                forceglsl = n >= 4 ? 1 : 0; 
+                shaderprecision = clamp(n - 1, 0, 2);
                 break;
             }
             case 'l': 
@@ -1089,7 +1157,7 @@ int main(int argc, char **argv)
     initlog("lua");
     lapi::init();
     if (!lapi::state.state()) fatal("cannot initialize lua script engine");
-    if (restoredinits) tools::execcfg(initcfg, true);
+    tools::execcfg("init.lua", true);
 
     initing = NOT_INITING;
 
@@ -1142,7 +1210,7 @@ int main(int argc, char **argv)
     gui::setup();
 
     initlog("console");
-    var::persistvars = false;
+    varsys::persistvars = false;
 
     types::Tuple<int, const char*> err;
 
@@ -1186,7 +1254,7 @@ int main(int argc, char **argv)
             logger::log(logger::ERROR, "%s\n", types::get<1>(err));
     }
     
-    var::persistvars = true;
+    varsys::persistvars = true;
     
     initing = INIT_LOAD;
     if(!tools::execcfg(game::savedconfig())) 
@@ -1200,11 +1268,11 @@ int main(int argc, char **argv)
         logger::log(logger::ERROR, "%s\n", types::get<1>(err));
     initing = NOT_INITING;
 
-    var::persistvars = false;
+    varsys::persistvars = false;
 
     game::loadconfigs();
 
-    var::persistvars = true;
+    varsys::persistvars = true;
 
     initlog("Registering messages\n");
     MessageSystem::MessageManager::registerAll();
@@ -1229,6 +1297,7 @@ int main(int argc, char **argv)
     resetfpshistory();
 
     inputgrab(grabinput = true);
+    ignoremousemotion();
 
     for(;;)
     {
@@ -1248,7 +1317,6 @@ int main(int argc, char **argv)
         }
         local_server::try_connect(); /* Try connecting if server is ready */
 
-        skymillis += curtime; // INTENSITY: SkyManager
         lastmillis += curtime;
         totalmillis = millis;
 
@@ -1275,6 +1343,8 @@ int main(int argc, char **argv)
 
         if(minimized) continue;
 
+        if(!gui::mainmenu && ClientSystem::scenarioStarted()) gl_setupframe(screen->w, screen->h);
+
         inbetweenframes = false;
 
         if(gui::mainmenu) gl_drawmainmenu(screen->w, screen->h);
@@ -1282,6 +1352,11 @@ int main(int argc, char **argv)
         {
             // INTENSITY: If we have all the data we need from the server to run the game, then we can actually draw
             if (ClientSystem::scenarioStarted()) gl_drawframe(screen->w, screen->h);
+        }
+        if(frametimer)
+        {
+            glFinish();
+            framemillis = getclockmillis() - millis;
         }
         swapbuffers();
         renderedframe = inbetweenframes = true;

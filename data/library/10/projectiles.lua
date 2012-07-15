@@ -14,15 +14,15 @@ function do_blast_wave(position, power, velocity, custom_damage_fun, owner)
             entities = { entity_store.get_player_entity() }
         else
             entities = entity_store.get_all_close(position, { max_distance = max_dist })
-            entities = table.map        (entities, function(pair) return pair[1] end)
-            entities = table.filter_dict(entities, function(i, entity) return not entity:is_a(character.player) end)
+            entities = table.map   (entities, function(pair) return pair[1] end)
+            entities = table.filter(entities, function(i, entity) return not entity:is_a(character.player) end)
         end
     else
         entities = {}
         if owner == entity_store.get_player_entity() then
             entities = entity_store.get_all_close(position, { max_distance = max_dist })
-            entities = table.map        (entities, function(pair) return pair[1] end)
-            entities = table.filter_dict(entities, function(i, entity) return not entity:is_a(character.player) end)
+            entities = table.map   (entities, function(pair) return pair[1] end)
+            entities = table.filter(entities, function(i, entity) return not entity:is_a(character.player) end)
         end
         table.insert(entities, entity_store.get_player_entity())
     end
@@ -30,7 +30,7 @@ function do_blast_wave(position, power, velocity, custom_damage_fun, owner)
     for i, entity in pairs(entities) do
         if not entity.suffer_damage then return nil end
 
-        local distance = entity:get_center():sub(position):magnitude()
+        local distance = entity:get_center():sub(position):length()
         distance   = math.max(1, distance)
         local bump = math.round(math.max(0, power - math.pow(distance, expo)))
               bump = bump - (bump % 5)
@@ -43,7 +43,7 @@ function do_blast_wave(position, power, velocity, custom_damage_fun, owner)
                     ):add(
                         velocity:copy():normalize():mul(4)
                     ):add(
-                        math.vec3(0, 0, 2)
+                        math.Vec3(0, 0, 2)
                     ):normalize():mul(bump * 4)
                 )
             end
@@ -54,7 +54,7 @@ function do_blast_wave(position, power, velocity, custom_damage_fun, owner)
     end
 end
 
-projectile = class.new(nil, {
+projectile = table.classify({
     physics_frame_size = 0.02,
     speed              = 1,
     time_left          = 5,
@@ -141,14 +141,15 @@ projectile = class.new(nil, {
     on_explode = function(self)
         if CLIENT then
             local radius = self.visual_radius or self.radius
-            effects.splash(effects.PARTICLE.SMOKE, 5, 2.5, self.position, 0x222222, 12, 50, 500, nil, 1, false, 3)
-            effects.splash(effects.PARTICLE.SMOKE, 5, 0.2, self.position, 0x222222, 12, 50, 500, nil, 1, false, 4)
-            effects.splash(effects.PARTICLE.SPARK, 160, 0.03, self.position, 0xFFC864, 1.4, 300, nil, nil, nil, true)
-            effects.splash(effects.PARTICLE.FLAME1, 15, 0.03, self.position, 0xFFFFFF, 3.2, 300, nil, nil, nil, true)
-            effects.splash(effects.PARTICLE.FLAME2, 15, 0.03, self.position, 0xFFFFFF, 3.2, 300, nil, nil, nil, true)
-            effects.splash(effects.PARTICLE.FLAME2, 15, 0.03, self.position, 0xFFFFFF, 3.2, 300, nil, nil, nil, true)
-            effects.splash(effects.PARTICLE.EXPLODE, 1, 0.1, self.position, 0xFFFFFF, 10, 300, 500, true, nil, nil, 4)
-            effects.fireball(effects.PARTICLE.EXPLOSION, self.position, radius, 0.1, self.color, radius / 5)
+            -- TODO: proper explosion effect
+            --effects.splash(effects.PARTICLE.SMOKE, 5, 2.5, self.position, 0x222222, 12, 50, 500, nil, 1, false, 3)
+            --effects.splash(effects.PARTICLE.SMOKE, 5, 0.2, self.position, 0x222222, 12, 50, 500, nil, 1, false, 4)
+            --effects.splash(effects.PARTICLE.SPARK, 160, 0.03, self.position, 0xFFC864, 1.4, 300, nil, nil, nil, true)
+            --effects.splash(effects.PARTICLE.FLAME1, 15, 0.03, self.position, 0xFFFFFF, 3.2, 300, nil, nil, nil, true)
+            --effects.splash(effects.PARTICLE.FLAME2, 15, 0.03, self.position, 0xFFFFFF, 3.2, 300, nil, nil, nil, true)
+            --effects.splash(effects.PARTICLE.FLAME2, 15, 0.03, self.position, 0xFFFFFF, 3.2, 300, nil, nil, nil, true)
+            --effects.splash(effects.PARTICLE.EXPLODE, 1, 0.1, self.position, 0xFFFFFF, 10, 300, 500, true, nil, nil, 4)
+            effects.fireball(effects.PARTICLE.EXPLOSION, self.position, radius, 1, self.color, radius)
 
             if edit.get_material(self.position) == edit.MATERIAL_WATER then
                 if self.underwater_explosion_sound then
@@ -169,7 +170,7 @@ projectile = class.new(nil, {
     end
 })
 
-manager = class.new(nil, {
+manager = table.classify({
     __init = function(self)
         self.projectiles = {}
     end,
@@ -179,7 +180,7 @@ manager = class.new(nil, {
     end,
 
     tick = function(self, seconds)
-        self.projectiles = table.filter_dict(self.projectiles, function(i, projectile)
+        self.projectiles = table.filter(self.projectiles, function(i, projectile)
             local persist = projectile:tick(seconds)
             if not persist then
                 projectile:destroy()
@@ -242,7 +243,7 @@ plugin = {
     end
 }
 
-gun = class.new(firing.gun, {
+gun = table.subclass(firing.gun, {
     shoot_projectile = function(self, shooter, origin_position, target_position, target_entity, projectile_class)
         local projectile_handler = (
             shooter.should_act and
@@ -262,14 +263,14 @@ gun = class.new(firing.gun, {
 
 -- examples
 
-small_shot = class.new(projectile, {
+small_shot = table.subclass(projectile, {
     radius = 5,
     color  = 0xFFCC66,
     speed  = 50,
     explosion_power = 50
 })
 
-debris = class.new(projectile, {
+debris = table.subclass(projectile, {
     radius     = 0.5,
     color      = 0xDCBBAA,
     time_left  = 5,
@@ -298,12 +299,12 @@ debris = class.new(projectile, {
         if not self.debris_model then return nil end
 
         local o     = self.position
-        local flags = math.bor(model.LIGHT, model.CULL_VFC, model.CULL_DIST, model.DYNSHADOW)
+        local flags = math.bor(model.CULL_VFC, model.CULL_DIST)
         
         model.render(
             game_manager.get_singleton(),
             self.debris_model,
-            actions.ANIM_IDLE,
+            model.ANIM_IDLE,
             o, 0, 0, flags, 0
         )
     end,

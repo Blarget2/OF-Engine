@@ -44,8 +44,10 @@ struct vec
 
     void push(lua_State *L) const
     {
-        lua_getglobal (L, "math");
-        lua_getfield  (L, -1, "vec3");
+        lua_getglobal (L, "LAPI");
+        lua_getfield  (L, -1, "Math");
+        lua_getfield  (L, -1, "make_vec3");
+        lua_remove    (L, -2);
         lua_remove    (L, -2);
         lua_pushnumber(L, x);
         lua_pushnumber(L, y);
@@ -87,6 +89,7 @@ struct vec
     float squaredist(const vec &e) const { return vec(*this).sub(e).squaredlen(); }
     float dist(const vec &e) const { vec t; return dist(e, t); }
     float dist(const vec &e, vec &t) const { t = *this; t.sub(e); return t.magnitude(); }
+    float dist2(const vec &o) const { float dx = x-o.x, dy = y-o.y; return sqrtf(dx*dx + dy*dy); }
     bool reject(const vec &o, float r) { return x>o.x+r || x<o.x-r || y>o.y+r || y<o.y-r; }
     template<class A, class B>
     vec &cross(const A &a, const B &b) { x = a.y*b.z-a.z*b.y; y = a.z*b.x-a.x*b.z; z = a.x*b.y-a.y*b.x; return *this; }
@@ -172,7 +175,28 @@ struct vec
     {
         return dist_to_bb(o, T(o).add(size));
     }
+    
+    template<class T> float project_bb(const T &min, const T &max) const
+    {
+        return x*(x < 0 ? max.x : min.x) + y*(y < 0 ? max.y : min.y) + z*(z < 0 ? max.z : min.z);
+    }
 };
+
+#define VEC_OP(OP)                                                    \
+static inline vec operator OP (const vec &a, const vec &b) {          \
+    return vec(a.x OP b.x, a.y OP b.y, a.z OP b.z);                   \
+}                                                                     \
+static inline vec operator OP (float s, const vec &b) {               \
+    return vec(s OP b.x, s OP b.y, s OP b.z);                         \
+}                                                                     \
+static inline vec operator OP (const vec &a, float s) {               \
+    return vec(a.x OP s, a.y OP s, a.z OP s);                         \
+}
+VEC_OP(*)
+VEC_OP(/)
+VEC_OP(+)
+VEC_OP(-)
+#undef VEC_OP
 
 static inline bool htcmp(const vec &x, const vec &y)
 {
@@ -226,8 +250,10 @@ struct vec4
 
     void push(lua_State *L) const
     {
-        lua_getglobal (L, "math");
-        lua_getfield  (L, -1, "vec4");
+        lua_getglobal (L, "LAPI");
+        lua_getfield  (L, -1, "Math");
+        lua_getfield  (L, -1, "make_vec4");
+        lua_remove    (L, -2);
         lua_remove    (L, -2);
         lua_pushnumber(L, x);
         lua_pushnumber(L, y);
@@ -280,6 +306,22 @@ struct vec4
 
     void setxyz(const vec &v) { x = v.x; y = v.y; z = v.z; }
 };
+
+#define VEC4_OP(OP)                                                   \
+static inline vec4 operator OP (const vec4 &a, const vec4 &b) {       \
+    return vec4(a.x OP b.x, a.y OP b.y, a.z OP b.z, a.w OP b.w);      \
+}                                                                     \
+static inline vec4 operator OP (float s, const vec4 &b) {             \
+    return vec4(s OP b.x, s OP b.y, s OP b.z, s OP b.w);              \
+}                                                                     \
+static inline vec4 operator OP (const vec4 &a, float s) {             \
+    return vec4(a.x OP s, a.y OP s, a.z OP s, a.w OP s);              \
+}
+VEC4_OP(*)
+VEC4_OP(/)
+VEC4_OP(+)
+VEC4_OP(-)
+#undef VEC4_OP
 
 inline vec::vec(const vec4 &v) : x(v.x), y(v.y), z(v.z) {}
 
@@ -1004,7 +1046,7 @@ struct triangle
 
 /**
 
-Sauerbraten uses 3 different linear coordinate systems
+The engine uses 3 different linear coordinate systems
 which are oriented around each of the axis dimensions.
 
 So any point within the game can be defined by four coordinates: (d, x, y, z)
@@ -1154,9 +1196,25 @@ struct bvec
 
     vec tovec() const { return vec(x*(2.0f/255.0f)-1.0f, y*(2.0f/255.0f)-1.0f, z*(2.0f/255.0f)-1.0f); }
 
+    bvec &normalize()
+    {
+        vec n(x-127.5f, y-127.5f, z-127.5f);
+        float mag = 127.5f/n.magnitude();
+        x = uchar(n.x*mag+127.5f);
+        y = uchar(n.y*mag+127.5f);
+        z = uchar(n.z*mag+127.5f);
+        return *this;
+    }
+
     void lerp(const bvec &a, const bvec &b, float t) { x = uchar(a.x + (b.x-a.x)*t); y = uchar(a.y + (b.y-a.y)*t); z = uchar(a.z + (b.z-a.z)*t); }
 
     void flip() { x -= 128; y -= 128; z -= 128; }
+
+    bvec &shl(int n) { x<<= n; y<<= n; z<<= n; return *this; }
+    bvec &shr(int n) { x>>= n; y>>= n; z>>= n; return *this; }
+
+    static bvec fromcolor(const vec &v) { return bvec(uchar(v.x*255.0f), uchar(v.y*255.0f), uchar(v.z*255.0f)); }
+    vec tocolor() const { return vec(x*(1.0f/255.0f), y*(1.0f/255.0f), z*(1.0f/255.0f)); }
 };
 
 struct glmatrixf
@@ -1180,6 +1238,8 @@ struct glmatrixf
         v[12] = m.a.w; v[13] = m.b.w; v[14] = m.c.w; v[15] = 1.0f;
     }
 
+    float &operator()(int row, int col) { return v[row+col*4];}
+    float operator()(int row, int col) const { return v[row+col*4];}
     float operator[](int i) const { return v[i]; }
     float &operator[](int i) { return v[i]; }
 
@@ -1302,9 +1362,10 @@ struct glmatrixf
 
     void scale(float x, float y, float z)
     {
-        v[0] *= x; v[1] *= x; v[2] *= x; v[3] *= x;
-        v[4] *= y; v[5] *= y; v[6] *= y; v[7] *= y;
-        v[8] *= z; v[9] *= z; v[10] *= z; v[11] *= z;
+        v[0] *= x; v[1] *= y; v[2] *= z;
+        v[4] *= x; v[5] *= y; v[6] *= z;
+        v[8] *= x; v[9] *= y; v[10] *= z;
+        v[12] *= x; v[13] *= y; v[14] *= z;
     }
 
     void reflectz(float z)
@@ -1342,6 +1403,17 @@ struct glmatrixf
     {
         float ydist = znear * tan(fovy/2*RAD), xdist = ydist * aspect;
         frustum(-xdist, xdist, -ydist, ydist, znear, zfar);
+    }
+
+    void ortho(float left, float right, float bottom, float top, float znear, float zfar)
+    {
+        const float tx = -(right+left) / (right-left);
+        const float ty = -(top+bottom) / (top-bottom);
+        const float tz = -(zfar+znear) / (zfar-znear);
+        v[0] = 2.f/(right-left); v[4] = 0.f;              v[8] = 0.f;                v[12] = tx;
+        v[1] = 0.f;              v[5] = 2.f/(top-bottom); v[9] = 0.f;                v[13] = ty;
+        v[2] = 0.f;              v[6] = 0.f;              v[10] = -2.f/(zfar-znear); v[14] = tz;
+        v[3] = 0.f;              v[7] = 0.f;              v[11] = 0.f;               v[15] = 1.f;
     }
 
     void clip(const plane &p, const glmatrixf &m)

@@ -3,7 +3,7 @@ library.include("mapelements.world_areas")
 module("platformer", package.seeall)
 
 function vec3_from_axis(axis)
-    local ret = math.vec3(0, 0, 0)
+    local ret = math.Vec3(0, 0, 0)
     if axis == "+x" then
         ret.x =  1
     elseif axis == "-x" then
@@ -48,8 +48,8 @@ plugin = {
         self.platform_fov = 50
         self:set_platform_direction(1)
 
-        self:connect("client_respawn", function(self)
-            signals.post_emit_event_add(function(self)
+        signal.connect(self, "client_respawn", function(self)
+            signal.add_post_emit_event(function(self)
                 self.platform_axis        = "+x"
                 self.platform_position    = self.position.y
                 self.platform_camera_axis = "+y"
@@ -83,7 +83,7 @@ plugin = {
                 if position then
                     self.position = position:lerp(self.position, 1 - (seconds * 5))
                     self.velocity = velocity
-                    logging.log(logging.WARNING, "Fixed platform position %(1)i" % { GLOBAL_TIME })
+                    log(WARNING, "Fixed platform position %(1)i" % { frame.get_time() })
                 end
             end
 
@@ -201,7 +201,7 @@ axis_switcher = entity_classes.register(plugins.bake(entity_static.area_trigger,
         flip_axes = function(self, up)
             local player = entity_store.get_player_entity()
 
-            for i, axis in pairs(self.platform_axises:as_array()) do
+            for i, axis in pairs(self.platform_axises:to_array()) do
                 if player.platform_axis[2] ~= axis[2] then
                     axis = ((up < 0) and
                         player.platform_camera_axis or
@@ -216,7 +216,7 @@ axis_switcher = entity_classes.register(plugins.bake(entity_static.area_trigger,
                 end
             end
 
-            logging.log(logging.ERROR, "did not find player axis to flip, %(1)s" % { player.platform_axis })
+            log(ERROR, "did not find player axis to flip, %(1)s" % { player.platform_axis })
         end
     }
 }, "axis_switcher"), "mapmodel")

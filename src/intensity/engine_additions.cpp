@@ -67,7 +67,7 @@ vec CLogicEntity::getOrigin()
                 {
                     CLogicEntity *ptr = LogicSystem::getLogicEntity(getUniqueId());
                     assert(ptr);
-                    m->collisionbox(0, bbcenter, bbradius, ptr);
+                    m->collisionbox(bbcenter, bbradius, ptr);
                     rotatebb(bbcenter, bbradius, int(staticEntity->attr1));
                     bbcenter.add(staticEntity->o);
                     return bbcenter;
@@ -100,7 +100,7 @@ float CLogicEntity::getRadius()
                 {
                     CLogicEntity *ptr = LogicSystem::getLogicEntity(getUniqueId());
                     assert(ptr);
-                    m->collisionbox(0, bbcenter, bbradius, ptr);
+                    m->collisionbox(bbcenter, bbradius, ptr);
                     rotatebb(bbcenter, bbradius, int(staticEntity->attr1));
                     bbcenter.add(staticEntity->o);
                     return bbradius.x + bbradius.y;
@@ -123,8 +123,10 @@ void CLogicEntity::setOrigin(vec &newOrigin)
     lua::Table t = lapi::state.new_table(3);
     t[0] = newOrigin.x; t[1] = newOrigin.y; t[2] = newOrigin.z;
     lapi::state.get<lua::Function>(
-        "entity_store", "get"
-    ).call<lua::Table>(getUniqueId())["position"] = t;
+        "LAPI", "World", "Entities", "get"
+    ).call<lua::Table>(getUniqueId())[lapi::state.get<lua::Object>(
+        "LAPI", "World", "Entity", "Properties", "position"
+    )] = t;
 }
 
 int CLogicEntity::getAnimation()
@@ -179,7 +181,7 @@ void CLogicEntity::setModel(const char *name)
 
     if (strcmp(name, "")) theModel = loadmodel(name);
 
-    logger::log(logger::DEBUG, "CLE:setModel: %s (%lu)\r\n", name, (unsigned long)theModel);
+    logger::log(logger::DEBUG, "CLE:setModel: %s (%p)\r\n", name, (void*)theModel);
 
     if (staticEntity)
         addentity(staticEntity);
@@ -294,7 +296,7 @@ void CLogicEntity::setSound(const char *snd)
     logger::log(logger::DEBUG, "setSound: %s\r\n", snd);
 
     // This is important as this is called before setupExtent.
-    if ((!this) || (!staticEntity && !dynamicEntity))
+    if ((!this) || !staticEntity)
         return;
 
     logger::log(logger::DEBUG, "(2) setSound: %s\r\n", snd);
@@ -315,10 +317,6 @@ void CLogicEntity::setSound(const char *snd)
 
 const char *CLogicEntity::getSound()
 {
-    // This is important as this is called before setupExtent.
-    if ((!this) || (!staticEntity && !dynamicEntity))
-        return NULL;
-
     return sndname;
 }
 
@@ -360,7 +358,7 @@ void LogicSystem::clear(bool restart_lua)
 
     if (lapi::state.state())
     {
-        lapi::state.get<lua::Function>("entity_store", "del_all")();
+        lapi::state.get<lua::Function>("LAPI", "World", "Entities", "delete_all")();
         enumerate(logicEntities, CLogicEntity*, ent, assert(!ent));
 
         if (restart_lua) lapi::reset();
@@ -385,7 +383,7 @@ void LogicSystem::registerLogicEntity(CLogicEntity *newEntity)
     logicEntities.access(uniqueId, newEntity);
 
     new (&(newEntity->lua_ref)) lua::Table(lapi::state.get<lua::Function>(
-        "entity_store", "get"
+        "LAPI", "World", "Entities", "get"
     ).call<lua::Object>(uniqueId));
     assert(!newEntity->lua_ref.is_nil());
 
@@ -464,7 +462,7 @@ void LogicSystem::manageActions(long millis)
     INDENT_LOG(logger::INFO);
 
     if (lapi::state.state())
-        lapi::state.get<lua::Function>("entity_store", "manage_actions")(
+        lapi::state.get<lua::Function>("LAPI", "World", "handle_frame")(
             double(millis) / 1000.0f, lastmillis
         );
 
@@ -533,10 +531,10 @@ void LogicSystem::setUniqueId(physent* dynamicEntity, int uniqueId)
     ((fpsent*)dynamicEntity)->uniqueId = uniqueId;
 }
 
-void LogicSystem::setupExtent(const lua::Table& ref, int type, float x, float y, float z, int attr1, int attr2, int attr3, int attr4)
+void LogicSystem::setupExtent(const lua::Table& ref, int type, float x, float y, float z, int attr1, int attr2, int attr3, int attr4, int attr5)
 {
     int uniqueId = ref.get<int>("uid");
-    logger::log(logger::DEBUG, "setupExtent: %d,  %d : %f,%f,%f : %d,%d,%d,%d\r\n", uniqueId, type, x, y, z, attr1, attr2, attr3, attr4);
+    logger::log(logger::DEBUG, "setupExtent: %d,  %d : %f,%f,%f : %d,%d,%d,%d,%d\r\n", uniqueId, type, x, y, z, attr1, attr2, attr3, attr4, attr5);
     INDENT_LOG(logger::DEBUG);
 
     extentity *e = new extentity;
@@ -548,6 +546,7 @@ void LogicSystem::setupExtent(const lua::Table& ref, int type, float x, float y,
     e->attr2 = attr2;
     e->attr3 = attr3;
     e->attr4 = attr4;
+    e->attr5 = attr5;
 
     e->inoctanode = false; // This is not set by the constructor in sauer, but by those calling "new extentity", so we also do that here
 

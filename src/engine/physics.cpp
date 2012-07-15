@@ -117,7 +117,7 @@ static inline bool raycubeintersect(clipplanes &p, const cube &c, const vec &v, 
 }
 
 extern void entselectionbox(const entity &e, vec &eo, vec &es);
-extern int& entselradius;
+extern int entselradius;
 float hitentdist;
 int hitent, hitorient;
 
@@ -206,7 +206,7 @@ static float shadowent(octaentities *oc, octaentities *last, const vec &o, const
     vec v(o), invray(ray.x ? 1/ray.x : 1e16f, ray.y ? 1/ray.y : 1e16f, ray.z ? 1/ray.z : 1e16f); \
     cube *levels[20]; \
     levels[worldscale] = worldroot; \
-    int lshift = worldscale; \
+    int lshift = worldscale, elvl = worldscale; \
     ivec lsizemask(invray.x>0 ? 1 : 0, invray.y>0 ? 1 : 0, invray.z>0 ? 1 : 0); \
 
 #define CHECKINSIDEWORLD \
@@ -236,10 +236,15 @@ static float shadowent(octaentities *oc, octaentities *last, const vec &o, const
         { \
             lshift--; \
             lc += octastep(x, y, z, lshift); \
-            if(lc->ext && lc->ext->ents && dent > 1e15f) \
+            if(lc->ext && lc->ext->ents && lshift < elvl) \
             { \
-                dent = disttoent(lc->ext->ents, oclast, o, ray, radius, mode, t); \
-                if(dent < 1e15f earlyexit) return min(dent, dist); \
+                float edist = disttoent(lc->ext->ents, oclast, o, ray, radius, mode, t); \
+                if(edist < 1e15f) \
+                { \
+                    if(earlyexit) return min(edist, dist); \
+                    elvl = lshift; \
+                    dent = min(dent, edist); \
+                } \
                 oclast = lc->ext->ents; \
             } \
             if(lc->children==NULL) break; \
@@ -283,7 +288,7 @@ float raycube(const vec &o, const vec &ray, float radius, int mode, int size, ex
     int closest = -1, x = int(v.x), y = int(v.y), z = int(v.z);
     for(;;)
     {
-        DOWNOCTREE(disttoent, && (mode&RAY_SHADOW));
+        DOWNOCTREE(disttoent, mode&RAY_SHADOW);
 
         int lsize = 1<<lshift;
 
@@ -326,7 +331,7 @@ float shadowray(const vec &o, const vec &ray, float radius, int mode, extentity 
     int side = O_BOTTOM, x = int(v.x), y = int(v.y), z = int(v.z);
     for(;;)
     {
-        DOWNOCTREE(shadowent, );
+        DOWNOCTREE(shadowent, true);
 
         cube &c = *lc;
         ivec lo(x&(~0<<lshift), y&(~0<<lshift), z&(~0<<lshift));
@@ -376,7 +381,7 @@ float shadowray(ShadowRayCache *cache, const vec &o, const vec &ray, float radiu
     int side = O_BOTTOM, x = int(v.x), y = int(v.y), z = int(v.z);
     for(;;)
     {
-        DOWNOCTREE(shadowent, );
+        DOWNOCTREE(shadowent, true);
 
         cube &c = *lc;
         ivec lo(x&(~0<<lshift), y&(~0<<lshift), z&(~0<<lshift));
@@ -742,7 +747,7 @@ bool mmcollide(physent *d, const vec &dir, octaentities &oc)               // co
         model *m = entity->getModel(); //loadmodel(NULL, e.attr2);
         if(!m || !m->collide) continue;
         vec center, radius;
-        m->collisionbox(0, center, radius, entity); // INTENSITY: entity
+        m->collisionbox(center, radius, entity); // INTENSITY: entity
         float yaw = e.attr1;
         switch(d->collidetype)
         {
@@ -1639,9 +1644,12 @@ void vectoyawpitch(const vec &v, float &yaw, float &pitch)
     pitch = asin(v.z/v.magnitude())/RAD;
 }
 
-VARP(maxroll, 0, 3, 20);
+#define PHYSFRAMETIME 5
+
+VARP(maxroll, 0, 0, 20);
 FVAR(straferoll, 0, 0.033f, 90);
-VAR(floatspeed, 10, 100, 10000);
+FVAR(faderoll, 0, 0.95f, 1);
+VAR(floatspeed, 1, 100, 10000);
 
 void modifyvelocity(physent *pl, bool local, bool water, bool floating, int curtime)
 {
@@ -1790,16 +1798,8 @@ bool moveplayer(physent *pl, int moveres, bool local, int curtime)
 
     // automatically apply smooth roll when strafing
 
-    if(pl->strafe==0)
-    {
-        pl->roll = pl->roll/(1+(float)sqrtf((float)curtime)/25);
-    }
-    else
-    {
-        pl->roll -= pl->strafe*curtime*straferoll;
-        if(pl->roll > maxroll) pl->roll = maxroll;
-        else if(pl->roll < -maxroll) pl->roll = -maxroll;
-    }
+    if(pl->strafe && maxroll) pl->roll = clamp(pl->roll - pow(clamp(1.0f + pl->strafe*pl->roll/maxroll, 0.0f, 1.0f), 0.33f)*pl->strafe*curtime*straferoll, -maxroll, maxroll);
+    else pl->roll *= curtime == PHYSFRAMETIME ? faderoll : pow(faderoll, curtime/float(PHYSFRAMETIME));
 
     // play sounds on water transitions
 
@@ -1815,9 +1815,9 @@ bool moveplayer(physent *pl, int moveres, bool local, int curtime)
     if (pl->o.z < 0)
     {
 #ifdef CLIENT
-        lua::Function f = lapi::state["client_on_ent_offmap"];
+        lua::Function f(lapi::state.get<lua::Object>("LAPI", "World", "Events", "Client", "off_map"));
 #else
-        lua::Function f = lapi::state["on_ent_offmap"];
+        lua::Function f(lapi::state.get<lua::Object>("LAPI", "World", "Events", "Server", "off_map"));
 #endif
         if (f.is_nil()) return true;
         f(LogicSystem::getLogicEntity((dynent*)pl)->lua_ref);
@@ -1825,8 +1825,6 @@ bool moveplayer(physent *pl, int moveres, bool local, int curtime)
 
     return true;
 }
-
-#define PHYSFRAMETIME 5
 
 int physsteps = 0, physframetime = PHYSFRAMETIME, lastphysframe = 0;
 
@@ -1836,7 +1834,7 @@ void physicsframe()          // optimally schedule physics frames inside the gra
     if(diff <= 0) physsteps = 0;
     else
     {
-        extern int& gamespeed;
+        extern int gamespeed;
         physframetime = clamp((PHYSFRAMETIME*gamespeed)/100, 1, PHYSFRAMETIME);
         physsteps = (diff + physframetime - 1)/physframetime;
         lastphysframe += physsteps * physframetime;

@@ -19,6 +19,8 @@
 #include "of_world.h"
 #include "of_tools.h"
 
+int findtype(char *what);
+
 /* Abuse generation from template for now */
 void force_network_flush();
 namespace server
@@ -86,7 +88,7 @@ namespace MessageSystem
         types::String content;
         getstring(content, p);
 
-        lapi::state.get<lua::Function>("gui", "message")(title, content);
+        lapi::state.get<lua::Function>("LAPI", "GUI", "show_message")(title, content);
     }
 #endif
 
@@ -338,7 +340,7 @@ namespace MessageSystem
         types::String scenarioCode;
         getstring(scenarioCode, p);
 
-        lapi::state.get<lua::Function>("gui", "message")("Server", "Map being prepared on the server, please wait ..");
+        lapi::state.get<lua::Function>("LAPI", "GUI", "show_message")("Server", "Map being prepared on the server, please wait ..");
         ClientSystem::prepareForNewScenario(scenarioCode);
     }
 #endif
@@ -373,8 +375,6 @@ namespace MessageSystem
 
         logger::log(logger::DEBUG, "Sending a message of type NotifyAboutCurrentScenario (1008)\r\n");
         INDENT_LOG(logger::DEBUG);
-
-         
 
         int start, finish;
         if (clientNumber == -1)
@@ -488,12 +488,12 @@ namespace MessageSystem
         }
         // Validate class
         if (lapi::state.get<lua::Function>(
-            "entity_classes", "get_class"
+            "LAPI", "World", "Entities", "Classes", "get"
         ).call<lua::Object>(_class).is_nil()) return;
         // Add entity
         logger::log(logger::DEBUG, "Creating new entity, %s   %f,%f,%f   %s\r\n", _class.get_buf(), x, y, z, stateData.get_buf());
         if ( !server::isRunningCurrentScenario(sender) ) return; // Silently ignore info from previous scenario
-        const char *sauerType = lapi::state.get<lua::Function>("entity_classes", "get_sauer_type").call<const char*>(_class);
+        const char *sauerType = lapi::state.get<lua::Function>("LAPI", "World", "Entities", "Classes", "get_sauer_type").call<const char*>(_class);
         logger::log(logger::DEBUG, "Sauer type: %s\r\n", sauerType);
         // Create
         lua::Table t = lapi::state.new_table(0, 2);
@@ -501,7 +501,9 @@ namespace MessageSystem
         v["x"] = x; v["y"] = y; v["z"] = z;
         t["position"  ] = v;
         t["state_data"] = stateData;
-        int newUniqueId = lapi::state.get<lua::Function>("entity_store", "new").call<lua::Table>(_class, t).get<int>("uid");
+        int newUniqueId = lapi::state.get<lua::Function>(
+            "LAPI", "World", "Entities", "new"
+        ).call<lua::Table>(_class, t).get<int>(lapi::state.get<lua::Object>("LAPI", "World", "Entity", "Properties", "id"));
         logger::log(logger::DEBUG, "Created Entity: %d - %s  (%f,%f,%f) \r\n",
                                       newUniqueId, _class.get_buf(), x, y, z);
     }
@@ -581,7 +583,7 @@ namespace MessageSystem
                 if (!LogicSystem::initialized) \
                     return; \
                 \
-                lapi::state.get<lua::Function>("entity_store", "set_state_data")(uniqueId, keyProtocolId, value);
+                lapi::state.get<lua::Function>("LAPI", "World", "Entity", "set_state_data")(uniqueId, keyProtocolId, value);
         #endif
         STATE_DATA_UPDATE
     }
@@ -624,7 +626,7 @@ namespace MessageSystem
         \
         if ( !server::isRunningCurrentScenario(sender) ) return; /* Silently ignore info from previous scenario */ \
         \
-        lapi::state.get<lua::Function>("entity_store", "set_state_data")(uniqueId, keyProtocolId, value, actorUniqueId);
+        lapi::state.get<lua::Function>("LAPI", "World", "Entity", "set_state_data")(uniqueId, keyProtocolId, value, actorUniqueId);
         STATE_DATA_REQUEST
     }
 #endif
@@ -861,15 +863,13 @@ namespace MessageSystem
                 send_PersonalServerMessage(sender, "Invalid scenario", "An error occured in synchronizing scenarios");
                 return;
             }
-            lapi::state.get<lua::Function>("entity_store", "send_entities")(sender);
+            lapi::state.get<lua::Function>("LAPI", "World", "Entities", "send")(sender);
             MessageSystem::send_AllActiveEntitiesSent(sender);
-            lua::Function f = lapi::state["on_player_login"];
-            if (!f.is_nil())
-                f(
-                    lapi::state.get<lua::Function>(
-                        "entity_store", "get"
-                    ).call<lua::Object>(server::getUniqueId(sender))
-                );
+            lapi::state.get<lua::Function>("LAPI", "World", "Events", "Server", "player_login")(
+                lapi::state.get<lua::Function>(
+                    "LAPI", "World", "Entities", "get"
+                ).call<lua::Object>(server::getUniqueId(sender))
+            );
         #else // CLIENT
             // Send just enough info for the player's LE
             send_LogicEntityCompleteNotification( sender,
@@ -964,9 +964,9 @@ namespace MessageSystem
                         assert(otherClientNumber == ClientSystem::playerNumber);
                     }
                 #endif
-                t["cn"] = otherClientNumber;
+                t[lapi::state.get<lua::Object>("LAPI", "World", "Entity", "Properties", "cn")] = otherClientNumber;
             }
-            lapi::state.get<lua::Function>("entity_store", "add")(otherClass, otherUniqueId, t);
+            lapi::state.get<lua::Function>("LAPI", "World", "Entities", "add")(otherClass, otherUniqueId, t);
             entity = LogicSystem::getLogicEntity(otherUniqueId);
             if (!entity)
             {
@@ -988,7 +988,7 @@ namespace MessageSystem
                 // Note in C++
                 ClientSystem::playerLogicEntity = LogicSystem::getLogicEntity(ClientSystem::uniqueId);
                 // Note in lua
-                lapi::state.get<lua::Function>("entity_store", "set_player_uid")(ClientSystem::uniqueId);
+                lapi::state.get<lua::Function>("LAPI", "World", "Entity", "make_player")(ClientSystem::uniqueId);
             }
         #endif
         // Events post-reception
@@ -1022,7 +1022,7 @@ namespace MessageSystem
             return;
         }
         if ( !server::isRunningCurrentScenario(sender) ) return; // Silently ignore info from previous scenario
-        lapi::state.get<lua::Function>("entity_store", "del")(uniqueId);
+        lapi::state.get<lua::Function>("LAPI", "World", "Entities", "delete")(uniqueId);
     }
 #endif
 
@@ -1082,14 +1082,14 @@ namespace MessageSystem
 
         if (!LogicSystem::initialized)
             return;
-        lapi::state.get<lua::Function>("entity_store", "del")(uniqueId);
+        lapi::state.get<lua::Function>("LAPI", "World", "Entities", "delete")(uniqueId);
     }
 #endif
 
 
 // ExtentCompleteNotification
 
-    void send_ExtentCompleteNotification(int clientNumber, int otherUniqueId, const char* otherClass, const char* stateData, float x, float y, float z, int attr1, int attr2, int attr3, int attr4)
+    void send_ExtentCompleteNotification(int clientNumber, int otherUniqueId, const char* otherClass, const char* stateData, float x, float y, float z, int attr1, int attr2, int attr3, int attr4, int attr5)
     {
         int exclude = -1; // Set this to clientNumber to not send to
 
@@ -1128,7 +1128,7 @@ namespace MessageSystem
                 #ifdef SERVER
                     logger::log(logger::DEBUG, "Sending to %d (%d) ((%d))\r\n", clientNumber, testUniqueId, serverControlled);
                 #endif
-                sendf(clientNumber, MAIN_CHANNEL, "riissiiiiiii", 1021, otherUniqueId, otherClass, stateData, int(x*DMF), int(y*DMF), int(z*DMF), attr1, attr2, attr3, attr4);
+                sendf(clientNumber, MAIN_CHANNEL, "riissiiiiiiii", 1021, otherUniqueId, otherClass, stateData, int(x*DMF), int(y*DMF), int(z*DMF), attr1, attr2, attr3, attr4, attr5);
 
             }
         }
@@ -1151,24 +1151,25 @@ namespace MessageSystem
         int attr2 = getint(p);
         int attr3 = getint(p);
         int attr4 = getint(p);
+        int attr5 = getint(p);
 
         if (!LogicSystem::initialized)
             return;
-        logger::log(logger::DEBUG, "RECEIVING Extent: %d,%s - %f,%f,%f  %d,%d,%d\r\n", otherUniqueId, otherClass.get_buf(),
-            x, y, z, attr1, attr2, attr3, attr4);
+        logger::log(logger::DEBUG, "RECEIVING Extent: %d,%s - %f,%f,%f  %d,%d,%d,%d\r\n", otherUniqueId, otherClass.get_buf(),
+            x, y, z, attr1, attr2, attr3, attr4, attr5);
         INDENT_LOG(logger::DEBUG);
         // If a logic entity does not yet exist, create one
         CLogicEntity *entity = LogicSystem::getLogicEntity(otherUniqueId);
         if (entity == NULL)
         {
             logger::log(logger::DEBUG, "Creating new active LogicEntity\r\n");
-            const char *sauerType = lapi::state.get<lua::Function>("entity_classes", "get_sauer_type").call<const char*>(otherClass);
+            const char *sauerType = lapi::state.get<lua::Function>("LAPI", "World", "Entities", "Classes", "get_sauer_type").call<const char*>(otherClass);
 
             lua::Table t = lapi::state.new_table(0, 8);
             t["_type"] = findtype((char*)sauerType);
             t["x"] = x; t["y"] = y; t["z"] = z;
-            t["attr1"] = attr1; t["attr2"] = attr2; t["attr3"] = attr3; t["attr4"] = attr4;
-            lapi::state.get<lua::Function>("entity_store", "add")(otherClass, otherUniqueId, t);
+            t["attr1"] = attr1; t["attr2"] = attr2; t["attr3"] = attr3; t["attr4"] = attr4; t["attr5"] = attr5;
+            lapi::state.get<lua::Function>("LAPI", "World", "Entities", "add")(otherClass, otherUniqueId, t);
             entity = LogicSystem::getLogicEntity(otherUniqueId);
             assert(entity != NULL);
         } else
@@ -1177,7 +1178,7 @@ namespace MessageSystem
         // A logic entity now exists (either one did before, or we created one), we now update the stateData, if we
         // are remotely connected (TODO: make this not segfault for localconnect)
         logger::log(logger::DEBUG, "Updating stateData\r\n");
-        entity->lua_ref.get<lua::Function>("update_complete_state_data")(entity->lua_ref, stateData);
+        lapi::state.get<lua::Function>("LAPI", "World", "Entity", "update_complete_state_data")(entity->lua_ref, stateData);
         // Events post-reception
         world::trigger_received_entity();
     }
@@ -1706,31 +1707,13 @@ namespace MessageSystem
 
         if (world::scenario_code.is_empty()) return;
         if ( !server::isRunningCurrentScenario(sender) ) return; // Silently ignore info from previous scenario
-        lua::Function click = lapi::state["click"];
-        if (click.is_nil())
+        lua::Function click(lapi::state.get<lua::Object>("LAPI", "Input", "Events", "Server", "click"));
+        if (uniqueId != -1)
         {
-            if (uniqueId != -1)
-            {
-                CLogicEntity *entity = LogicSystem::getLogicEntity(uniqueId);
-                if (entity)
-                {
-                    lua::Function f = entity->lua_ref["click"];
-                    if  (f.is_nil()) return;
-                    else f(entity->lua_ref, button, down, vec(x, y, z));
-                }
-                else return; /* No need to call a click on entity that vanished meanwhile or does not yet exist! */
-            }
+            CLogicEntity *entity = LogicSystem::getLogicEntity(uniqueId);
+            if (entity) click(button, down, vec(x, y, z), entity->lua_ref);
         }
-        else
-        {
-            if (uniqueId != -1)
-            {
-                CLogicEntity *entity = LogicSystem::getLogicEntity(uniqueId);
-                if (entity) click(button, down, vec(x, y, z), entity->lua_ref);
-                return;
-            }
-            else click(button, down, vec(x, y, z));
-        }
+        else click(button, down, vec(x, y, z));
     }
 #endif
 

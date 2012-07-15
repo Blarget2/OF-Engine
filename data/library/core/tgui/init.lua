@@ -31,41 +31,6 @@ require("tgui.config")
 ]]
 
 --[[!
-    Property: can_quit
-
-    Title:
-        Really quit?
-
-    Description:
-        This is a window that gets shown when editing changes are
-        made and the user attempts to exit OctaForge.
-]]
-window("can_quit", "Really quit?", function()
-    -- main body list
-    gui.vlist(0, function()
-        -- icon + text
-        gui.hlist(0, function()
-            -- icon
-            gui.stretched_image(
-                get_icon_path("icon_question.png"),
-                0.08, 0.08
-            )
-            -- space between icon and text
-            gui.space(0.005, 0)
-            -- text
-            gui.label([[Editing changes have been made. If you quit
-now then they will be lost. Are you sure you
-want to quit?]])
-        end)
-        -- yes / no selection
-        gui.hlist(0, function()
-            button("yes", function() engine.force_quit()  end)
-            button("no",  function() gui.hide("can_quit") end)
-        end)
-    end)
-end)
-
---[[!
     Property: local_server_output
 
     Title:
@@ -219,7 +184,7 @@ function show_changes()
     gui.replace("changes", "changes", function()
         gui.vlist(0, function()
             for i, change in pairs(gui.get_changes()) do
-                gui.label(change, 1, 1, 1, 1, function() gui.align(-1, 0) end)
+                gui.label(change, 1, 0, 1, 1, 1, function() gui.align(-1, 0) end)
             end
         end)
     end)
@@ -242,13 +207,13 @@ function show_entity_properties_tab()
     -- first try if we're targeting at entity
     local  uid = entity_store.get_target_entity_uid()
     if not uid then
-        logging.log(logging.DEBUG, "No entity to show GUI for.")
+        log(DEBUG, "No entity to show GUI for.")
     end
 
     -- then try if it's gettable
     local  entity = entity_store.get(uid)
     if not entity then
-        logging.log(logging.DEBUG, "No entity to show GUI for.")
+        log(DEBUG, "No entity to show GUI for.")
     end
 
     -- sorted_keys is an array of keys sorted by name
@@ -307,7 +272,7 @@ function show_entity_properties_tab()
                             -- and label
                             gui.label(
                                 pair[1] .. ": ",
-                                1, 1, 1, 1,
+                                1, 0, 1, 1, 1,
                                 function()
                                     gui.align(-1, 0)
                                 end
@@ -315,15 +280,13 @@ function show_entity_properties_tab()
                         end)
 
                         -- pre-create an alias with initial value
-                        local was_persisting = engine.persist_vars(false)
-                        engine.new_var(
-                            name, engine.VAR_S, pair[2], true
-                        )
-                        engine.persist_vars(was_persisting)
+                        local was_persisting = var.persist_vars(false)
+                        var.new(name, EAPI.VAR_S, pair[2], true)
+                        var.persist_vars(was_persisting)
 
                         -- a field for the value - XXX: long enough?
                         field(name, #pair[2] + 25, function()
-                            local nv = _G[name]
+                            local nv = EVAR[name]
                             if nv ~= pair[2] then
                                 pair[2] = nv
                                 entity_store.get(entity.uid)[key]
@@ -418,23 +381,3 @@ function show_message(title, text)
     end)
 end
 gui.message = show_message
-
-window("console", "Console", function()
-    gui.tag("sizer", function() end)
-end)
-
-function show_console_bg(x1, y1, x2, y2)
-    local bw = x2 - x1
-    local bh = y2 - y1
-    local aspect = bw / bh
-    local sh = bh
-    local sw = sh * aspect
-    sw = sw / bw * (scr_w / scr_h)
-    sh = sh / bh
-    print(sw, sh)
-
-    gui.show("console")
-    gui.replace("console", "sizer", function()
-        gui.fill(sw - 0.1, sh - 0.1)
-    end)
-end

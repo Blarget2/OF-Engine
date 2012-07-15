@@ -39,7 +39,7 @@ module("sound", package.seeall)
 function play(name, position, volume, cn)
     -- defaults, we don't default volume since 0 is represented as
     -- 100 by the C API in this case
-    position = position or math.vec3(0, 0, 0)
+    position = position or math.Vec3(0, 0, 0)
 
     if CLIENT then
         -- clientside behavior
@@ -48,8 +48,8 @@ function play(name, position, volume, cn)
         -- TODO: don't send if client is too far to hear
         -- warn when using non-compressed names
         if #name > 2 then
-            logging.log(
-                logging.WARNING,
+            log(
+                WARNING,
                 string.format(
                     "Sending a sound '%s' to clients using"
                     .. " full string name. This should be done rarely,"
@@ -87,8 +87,8 @@ function stop(name, volume, cn)
     else
         -- warn when using non-compressed names
         if #name > 2 then
-            logging.log(
-                logging.WARNING,
+            log(
+                WARNING,
                 string.format(
                     "Sending a sound '%s' to clients using"
                     .. " full string name. This should be done rarely,"
@@ -149,12 +149,6 @@ end
         volume - see <play>.
 ]]
 register = CAPI.registersound
-
---[[!
-    Function: reset
-    Resets the sound system, including music, slots and others.
-]]
-reset = CAPI.resetsound
 
 --[[!
     Function: preload

@@ -59,10 +59,10 @@ local __entities_sauer = {}
         position - a <vec3> specifying the entity position.
         attr1..4 - entity attributes.
 ]]
-function add_sauer(entity_type, position, attr1, attr2, attr3, attr4)
+function add_sauer(entity_type, position, attr1, attr2, attr3, attr4, attr5)
     if not SERVER then return nil end
     table.insert(__entities_sauer, {
-        entity_type, position, attr1, attr2, attr3, attr4
+        entity_type, position, attr1, attr2, attr3, attr4, attr5
     })
 end
 
@@ -75,18 +75,18 @@ end
         uid - the unique ID of the entity.
 ]]
 function get(uid)
-    logging.log(logging.DEBUG, "get: entity " .. uid)
+    log(DEBUG, "get: entity " .. uid)
 
     local r = __entities_store[uid]
     if    r then
-        logging.log(
-            logging.DEBUG,
+        log(
+            DEBUG,
             "get: entity " .. uid .. " found (" .. r.uid .. ")"
         )
         return r
     else
-        logging.log(
-            logging.DEBUG, "get: could not find entity " .. uid
+        log(
+            DEBUG, "get: could not find entity " .. uid
         )
         return nil
     end
@@ -133,16 +133,16 @@ function get_by_tag(tag)
     if   #r == 1 then
         return r[1]
     elseif  #r > 1 then
-        logging.log(
-            logging.WARNING,
+        log(
+            WARNING,
             "Attempt to get a single entity with tag '"
                 .. tostring(wtag)
                 .. "', but several exist."
         )
         return nil
     else
-        logging.log(
-            logging.WARNING,
+        log(
+            WARNING,
             "Attempt to get a single entity with tag '"
                 .. tostring(wtag)
                 .. "', but none exist."
@@ -181,10 +181,10 @@ end
     Empty if no clients are found (that means we're not in game probably).
 ]]
 function get_all_clients()
-    local ret = get_all_by_class(player_class)
+    local ret = get_all_by_class(EVAR.player_class)
 
-    logging.log(
-        logging.INFO,
+    log(
+        INFO,
         "entity store: get_all_clients: got %(1)s clients" % { #ret }
     )
 
@@ -267,7 +267,7 @@ function get_all_close(origin, kwargs)
 
         -- check distances
         if not skip and (
-            origin:sub_new(fun(entity)):magnitude() <= max_distance
+            origin:sub_new(fun(entity)):length() <= max_distance
         ) then
             table.insert(ret, { entity, distance })
         end
@@ -311,17 +311,17 @@ function add(class_name, uid, kwargs, _new)
     -- debugging, we're leet
     uid = uid or 1337
 
-    logging.log(
-        logging.DEBUG,
+    log(
+        DEBUG,
         "Adding new scripting entity of type "
             .. class_name
             .. " with uid "
             .. uid
     )
-    logging.log(
-        logging.DEBUG,
+    log(
+        DEBUG,
         "   with arguments: "
-            .. json.encode(kwargs)
+            .. table.serialize(kwargs)
             .. ", "
             .. tostring(_new)
     )
@@ -362,7 +362,7 @@ function add(class_name, uid, kwargs, _new)
     -- done after setting the uid and placing in the global store,
     -- because c++ registration relies on both
 
-    logging.log(logging.DEBUG, "Activating ..")
+    log(DEBUG, "Activating ..")
 
     if CLIENT then
         r:client_activate(kwargs)
@@ -385,19 +385,19 @@ end
         uid - known unique ID of the entity.
 ]]
 function del(uid)
-    logging.log(logging.DEBUG, "Removing scripting entity: " .. uid)
+    log(DEBUG, "Removing scripting entity: " .. uid)
 
     -- check for existence
     if not __entities_store[uid] then
-        logging.log(
-            logging.WARNING,
+        log(
+            WARNING,
             "Cannot remove entity " .. uid .. " as it does not exist."
         )
         return nil
     end
 
     -- emit the signal
-    __entities_store[uid]:emit("pre_deactivate")
+    signal.emit(__entities_store[uid], "pre_deactivate")
 
     -- call deactivators
     if CLIENT then
@@ -410,7 +410,7 @@ function del(uid)
     local ent = __entities_store[uid]
     for k, v in pairs(entity_classes.class_storage) do
         if ent:is_a(v[1]) then
-            __entities_store_by_class[k] = table.filter_array(
+            __entities_store_by_class[k] = table.filter_map(
                 __entities_store_by_class[k],
                 function(a, b) return (b ~= ent) end
             )
@@ -432,133 +432,6 @@ function del_all()
 end
 
 --[[!
-    Variable: current_timestamp
-    Local variable storing current "timestamp". It gets
-    added to every frame. Used for caching of various kinds.
-    Publicly accessible via <GLOBAL_CURRENT_TIMESTAMP>.
-]]
-local current_timestamp = 0
-
---[[!
-    Variable: GLOBAL_CURRENT_TIMESTAMP
-    Global interface for <current_timestamp>.
-]]
-_G["GLOBAL_CURRENT_TIMESTAMP"] = current_timestamp
-
---[[!
-    Function: start_frame
-    Called per-frame in updateworld function in engine.
-    Adds to <current_timestamp>.
-]]
-function start_frame()
-    current_timestamp = current_timestamp + 1
-    _G["GLOBAL_CURRENT_TIMESTAMP"] = current_timestamp
-end
-
---[[!
-    Variable: GLOBAL_TIME
-    Global engine time. It gets added to every frame
-    in <manage_actions>. It basically stores a number
-    of seconds since the engine start.
-]]
-_G["GLOBAL_TIME"] = 0
-
---[[!
-    Variable: GLOBAL_CURRENT_TIMEDELTA
-    This stores how long time did <manage_actions> simulate
-    during the frame. Floating point number, value in seconds.
-]]
-_G["GLOBAL_CURRENT_TIMEDELTA"] = 1.0
-
---[[!
-    Variable: GLOBAL_LASTMILLIS
-    Number of miliseconds since last counter reset. It's also
-    stored as internal engine variable. If you want to know
-    total number of miliseconds, multiply <GLOBAL_TIME>
-    by 1000.
-]]
-_G["GLOBAL_LASTMILLIS"] = 0
-
---[[!
-    Variable: GLOBAL_QUEUED_ACTIONS
-    Table of actions queued globally, executed by <manage_actions>.
-    It's simply an array of functions taking no arguments which
-    you can safely insert to and queue your global actions.
-]]
-_G["GLOBAL_QUEUED_ACTIONS"] = {}
-
---[[!
-    Function: manage_actions
-    This is sort of Lua's "mainloop". It is executed per-frame from
-    C++, so performance is very important here. It first executes
-    actions that were queued into <GLOBAL_QUEUED_ACTIONS>, but works
-    on copy, as actions can actually add more actions into the queue.
-
-    Then, it applies changes to certain global variables (see
-    <GLOBAL_TIME>, <GLOBAL_CURRENT_TIMEDELTA>, <GLOBAL_LASTMILLIS>).
-
-    Finally, it loops whole entity storage and runs either act or
-    client_act (see <base_root.act> and <base_client.client_act>)
-    on each entity that has should_act set to true (or at least acts
-    for either client or server, see <base_root.should_act>).
-
-    Parameters:
-        seconds - number in seconds specifying how long to simulate, this
-        also affects <GLOBAL_TIME> and <GLOBAL_CURRENT_TIMEDELTA>.
-        lastmillis - internal lastmillis variable passed from the engine
-        (see <GLOBAL_LASTMILLIS>).
-]]
-function manage_actions(seconds, lastmillis)
-    logging.log(logging.INFO, "manage_actions: queued ..")
-
-    -- work on copy as actions might add more actions.
-    local curr_actions = table.copy(GLOBAL_QUEUED_ACTIONS)
-    -- clear up the queue
-    _G["GLOBAL_QUEUED_ACTIONS"] = {}
-
-    -- execute the actions
-    for k, v in pairs(curr_actions) do
-        v()
-    end
-
-    -- set the globals
-    _G["GLOBAL_TIME"] = GLOBAL_TIME + seconds
-    _G["GLOBAL_CURRENT_TIMEDELTA"] = seconds
-    _G["GLOBAL_LASTMILLIS"] = lastmillis
-
-    logging.log(logging.INFO, "manage_actions: " .. seconds)
-
-    -- act!
-    for uid, entity in pairs(__entities_store) do
-        local skip = false
-
-        -- do not act on deactivated or on those which
-        -- shouldn't really act
-        if entity.deactivated or not entity.should_act then
-            skip = true
-        end
-
-        -- check if we have clientside or serverside
-        -- acting, in that case do skipping if needed
-        if type(entity.should_act) == "table" and (
-            (CLIENT and not entity.should_act.client) or
-            (SERVER and not entity.should_act.server)
-        ) then
-            skip = true
-        end
-
-        -- if we can act, then act, on either client or server.
-        if not skip then
-            if CLIENT then
-                entity:client_act(seconds)
-            else
-                entity:act(seconds)
-            end
-        end
-    end
-end
-
---[[!
     Global rendering method. Performed every frame, so performance
     is very important. It loops the entity storage, checks if an
     entity can render, does rendering tests if needed (to improve
@@ -570,7 +443,7 @@ end
         <render_hud_model> does that.
 ]]
 function render_dynamic(thirdperson)
-    logging.log(logging.INFO, "render_dynamic")
+    log(INFO, "render_dynamic")
 
     -- get the player entity, return if it doesn't exist
     local  player = get_player_entity()
@@ -616,47 +489,42 @@ end
 --[[!
     Function: manage_triggering_collisions
     This function manages area trigger collisions. It's cached by time delay
-    (see <actions.cache_by_time_delay>) with delay set to 0.1 seconds,
+    (see <actions.cache_by_delay>) with delay set to 0.1 seconds,
     so the performance is sufficient.
 ]]
-manage_triggering_collisions = actions.cache_by_time_delay(
-    convert.tocalltable(
-        function()
-            -- get all area triggers and entities inherited from area triggers
-            local ents = get_all_by_class("area_trigger")
+manage_triggering_collisions = frame.cache_by_delay(function()
+    -- get all area triggers and entities inherited from area triggers
+    local ents = get_all_by_class("area_trigger")
 
-            -- loop all clients
-            for i, player in pairs(get_all_clients()) do
-                -- skipping?
-                local skip = false
+    -- loop all clients
+    for i, player in pairs(get_all_clients()) do
+        -- skipping?
+        local skip = false
 
-                -- skip players that are editing - they're not colliding
-                if is_player_editing(player) then
-                    skip = true
-                end
+        -- skip players that are editing - they're not colliding
+        if is_player_editing(player) then
+            skip = true
+        end
 
-                -- if not skipping ..
-                if not skip then
-                    -- loop the triggers
-                    for n, entity in pairs(ents) do
-                        -- if player is colliding the trigger ..
-                        if geometry.is_player_colliding_entity(
-                            player, entity
-                        ) then
-                            -- call needed methods
-                            if CLIENT then
-                                entity:client_on_collision(player)
-                            else
-                                entity:on_collision(player)
-                            end
-                        end
+        -- if not skipping ..
+        if not skip then
+            -- loop the triggers
+            for n, entity in pairs(ents) do
+                -- if player is colliding the trigger ..
+                if geometry.is_player_colliding_entity(
+                    player, entity
+                ) then
+                    -- call needed methods
+                    if CLIENT then
+                        entity:client_on_collision(player)
+                    else
+                        entity:on_collision(player)
                     end
                 end
             end
         end
-    ),
-    0.1
-)
+    end
+end, 0.1)
 
 --[[!
     Function: render_hud_model
@@ -677,10 +545,10 @@ end
 
 --[[!
     Function: load_entities
-    Loads entities into server storage from a file named 'entities.json'
+    Loads entities into server storage from a file named 'entities.lua'
     which is stored in map directory. The file contents are read into
-    JSON string which then gets decoded, entities get looped and state
-    data are set.
+    a serialized string which then gets deserialized, entities get
+    looped and state data are set.
 
     If <__entities_sauer> is non-empty, it also loads entities whose
     definitions are stored there. That is useful for importing
@@ -699,37 +567,37 @@ function load_entities()
         return nil
     end
 
-    logging.log(logging.DEBUG, "Reading entities.json..")
+    log(DEBUG, "Reading entities.lua..")
 
     -- read the entities
-    local entities_json = CAPI.readfile("./entities.json")
+    local entities_lua = CAPI.readfile("./entities.lua")
 
-    logging.log(
-        logging.DEBUG,
+    log(
+        DEBUG,
         "Loading entities .. "
-            .. tostring(entities_json)
+            .. tostring(entities_lua)
             .. ", "
-            .. type(entities_json)
+            .. type(entities_lua)
     )
 
     -- decode it
     local entities = {}
-    if entities_json then
-        entities = json.decode(entities_json)
+    if entities_lua then
+        entities = table.deserialize(entities_lua)
     end
 
     -- only if there are sauer entities loaded
     if #__entities_sauer > 0 then
-        logging.log(logging.DEBUG, "Loading sauer entities ..")
+        log(DEBUG, "Loading sauer entities ..")
 
-        logging.log(logging.DEBUG, "    Trying to load import JSON file ..")
+        log(DEBUG, "    Trying to load import Lua file ..")
 
-        local import_json = CAPI.readfile("./import.json")
+        local import_lua = CAPI.readfile("./import.lua")
         local import_models = {}
         local import_sounds = {}
 
-        if import_json then
-            local import_table = json.decode(import_json)
+        if import_lua then
+            local import_table = table.deserialize(import_lua)
             if import_table["models"] then
                 import_models = import_table["models"]
             end
@@ -767,17 +635,19 @@ function load_entities()
             local attr2 = entity[4]
             local attr3 = entity[5]
             local attr4 = entity[6]
+            local attr5 = entity[7]
 
-            table.insert(entities, {
+            if sn[et] then table.insert(entities, {
                 huid, sn[et], {
                     attr1 = tostring(attr1), attr2 = tostring(attr2),
                     attr3 = tostring(attr3), attr4 = tostring(attr4),
+                    attr5 = tostring(attr5),
                     radius = "0", position = "[%(1)i|%(2)i|%(3)i]" % {
                         o.x, o.y, o.z
                     }, animation = "130", model_name = "", attachments = "[]",
                     tags = "[]", persistent = "true"
                 }
-            })
+            }) end
 
             local ent = entities[#entities][3]
 
@@ -850,8 +720,8 @@ function load_entities()
 
     -- loop the table
     for i, entity in pairs(entities) do
-        logging.log(
-            logging.DEBUG, "load_entities: " .. json.encode(entity)
+        log(
+            DEBUG, "load_entities: " .. table.serialize(entity)
         )
 
         -- entity unique ID
@@ -861,19 +731,19 @@ function load_entities()
         -- entity state data
         local state_data = entity[3]
 
-        logging.log(
-            logging.DEBUG,
+        log(
+            DEBUG,
             "load_entities: "
                 .. uid
                 .. ", "
                 .. class_name
                 .. ", "
-                .. json.encode(state_data)
+                .. table.serialize(state_data)
             )
 
         -- backwards comptaibility, rotate by 180 degrees
         -- for yawed entities
-        if mapversion <= 30 and state_data.attr1 then
+        if EVAR.mapversion <= 30 and state_data.attr1 then
             -- skip certain entities which have different attr1 than yaw
             if  class_name ~= "light"
             and class_name ~= "flickering_light"
@@ -884,7 +754,7 @@ function load_entities()
             end
         end
 
-        if mapversion <= 31 and state_data.attr1 then
+        if EVAR.mapversion <= 31 and state_data.attr1 then
             if  class_name ~= "light"
             and class_name ~= "flickering_light"
             and class_name ~= "particle_effect"
@@ -898,43 +768,36 @@ function load_entities()
         end
 
         -- add the entity, pass state data via kwargs
-        add(class_name, uid, { state_data = json.encode(state_data) })
+        add(class_name, uid, { state_data = table.serialize(state_data) })
     end
 
-    logging.log(logging.DEBUG, "Loading entities complete")
+    log(DEBUG, "Loading entities complete")
 end
 
 --[[!
     Function: save_entities
-    Creates a JSON string of all entities in the storage and returns it.
+    Creates a serialized string of all entities in the storage and returns it.
     Useful when saving entities to a file, you can then load them again.
 ]]
 function save_entities()
-    -- stores encoded entity JSON strings
+    -- stores encoded entity serialized strings
     local r = {}
-    logging.log(logging.DEBUG, "Saving entities ..:")
+    log(DEBUG, "Saving entities ..:")
 
     -- loop the storage
     for uid, entity in pairs(__entities_store) do
         -- save only persistent entities
         if entity.persistent then
-            logging.log(logging.DEBUG, "Saving entity " .. entity.uid)
-
-            local class_name = tostring(entity)
-
-            -- TODO: store as serialized here, to save some parse/unparsing
-            -- create state data dictionary
-            local state_data = entity:create_state_data_dict()
-
-            -- insert encoded entity as JSON string
-            table.insert(r, json.encode({ uid, class_name, state_data }))
+            log(DEBUG, "Saving entity " .. entity.uid)
+            table.insert(r, table.serialize(
+                { uid, tostring(entity), entity:create_state_data_dict() }))
         end
     end
 
-    logging.log(logging.DEBUG, "Saving entities complete.")
+    log(DEBUG, "Saving entities complete.")
 
     -- return as string
-    return "[\n" .. table.concat(r, ",\n") .. "\n]\n"
+    return "{\n" .. table.concat(r, ",\n") .. "\n}\n"
 end
 
 --[[!
@@ -965,16 +828,14 @@ get_selected_entity = CAPI.editing_getselent
 ]]
 function setup_dynamic_rendering_test(entity)
     -- cache with delay of 1/3 second
-    entity.render_dynamic_test = actions.cache_by_time_delay(
-        -- callable table
-        convert.tocalltable(function()
+    entity.render_dynamic_test = frame.cache_by_delay(function()
             -- player center
             local player_center = get_player_entity().center
 
             -- check the distance - skip rendering only if it's distant
-            if entity.position:sub_new(player_center):magnitude() > 256 then
+            if entity.position:sub_new(player_center):length() > 256 then
                 -- check for line of sight
-                if not math.has_line_of_sight(
+                if not math.is_los(
                     player_center, entity.position
                 ) then
                     -- do not render
@@ -984,9 +845,7 @@ function setup_dynamic_rendering_test(entity)
 
             -- render
             return true
-        end),
-        1 / 3
-    )
+    end, 1 / 3)
 end
 
 if CLIENT then
@@ -1005,14 +864,14 @@ if CLIENT then
         <base_client.set_state_data>. 
     ]]
     function set_player_uid(uid)
-        logging.log(logging.DEBUG, "Setting player uid to " .. tostring(uid))
+        log(DEBUG, "Setting player uid to " .. tostring(uid))
 
         if uid then
             player_entity = get(uid)
             player_entity.controlled_here = true
 
-            logging.log(
-                logging.DEBUG,
+            log(
+                DEBUG,
                 "Player controlled_here:"
                     .. tostring(player_entity.controlled_here)
             )
@@ -1049,8 +908,8 @@ if CLIENT then
             local key = message.to_protocol_name(
                 tostring(entity), key_protocol_id
             )
-            logging.log(
-                logging.DEBUG,
+            log(
+                DEBUG,
                 "set_state_data: "
                     .. uid
                     .. ", "
@@ -1069,21 +928,21 @@ if CLIENT then
         returns false.
     ]]
     function has_scenario_started()
-        logging.log(logging.INFO, "Testing whether the scenario started ..")
+        log(INFO, "Testing whether the scenario started ..")
 
         -- not ready if we don't have player entity
         if not get_player_entity() then
-            logging.log(logging.INFO, ".. no, player entity not created yet.")
+            log(INFO, ".. no, player entity not created yet.")
             return false
         end
 
-        logging.log(logging.INFO, ".. player entity created.")
+        log(INFO, ".. player entity created.")
 
         -- not ready if anything is uninitialized
         for uid, entity in pairs(__entities_store) do
             if not entity.initialized then
-                logging.log(
-                    logging.INFO,
+                log(
+                    INFO,
                     ".. no, entity " .. entity.uid .. " is not initialized."
                 )
                 return false
@@ -1091,7 +950,7 @@ if CLIENT then
         end
 
         -- we're ready
-        logging.log(logging.INFO, ".. yes, scenario is running.")
+        log(INFO, ".. yes, scenario is running.")
         return true
     end
 else
@@ -1120,7 +979,7 @@ else
         -- r is at highest unique ID available. Increment it.
         r = r + 1
 
-        logging.log(logging.DEBUG, "Generating new uid: " .. r)
+        log(DEBUG, "Generating new uid: " .. r)
 
         -- we're done, return
         return r
@@ -1149,7 +1008,7 @@ else
         -- force or generate
         force_uid = force_uid or generate_uid()
 
-        logging.log(logging.DEBUG, "New entity: " .. force_uid)
+        log(DEBUG, "New entity: " .. force_uid)
 
         -- create instance
         local r = add(class, force_uid, kwargs, true)
@@ -1195,8 +1054,8 @@ else
             cn - client number of the receiver.
     ]]
     function send_entities(cn)
-        logging.log(
-            logging.DEBUG, "Sending active entities to " .. cn
+        log(
+            DEBUG, "Sending active entities to " .. cn
         )
 
         -- get table of unique IDs

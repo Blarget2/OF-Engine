@@ -13,14 +13,6 @@ struct entity                                   // persistent map entity
     uchar reserved;
 };
 
-struct entitylight
-{
-    vec color, dir;
-    int millis;
-
-    entitylight() : color(1, 1, 1), dir(0, 0, 1), millis(-1) {}
-};
-
 struct extentity : entity                       // part of the entity that doesn't get saved to disk
 {
     enum
@@ -32,7 +24,6 @@ struct extentity : entity                       // part of the entity that doesn
     };
 
     uchar spawned, inoctanode, visible, flags;  // the only dynamic state of a map entity
-    entitylight light;
     extentity *attached;
 
     int uniqueId; // Kripken: Added this
@@ -172,6 +163,8 @@ struct animinterpinfo // used for animation blending of animated characters
     void *lastmodel;
 
     animinterpinfo() : lastswitch(-1), lastmodel(NULL) {}
+
+    void reset() { lastswitch = -1; }
 };
 
 #define MAXANIMPARTS 3
@@ -183,7 +176,6 @@ struct dynent : physent                         // animated characters, or chara
 {
     bool k_left, k_right, k_up, k_down;         // see input code
 
-    entitylight light;
     animinterpinfo animinterp[MAXANIMPARTS];
     ragdolldata *ragdoll;
     occludequery *query;
@@ -212,6 +204,7 @@ struct dynent : physent                         // animated characters, or chara
     {
         physent::reset();
         stopmoving();
+        loopi(MAXANIMPARTS) animinterp[i].reset();
     }
 
     vec abovehead() { return vec(o).add(vec(0, 0, aboveeye+4)); }

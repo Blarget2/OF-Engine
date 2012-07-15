@@ -13,11 +13,11 @@ namespace lapi_binds
     void _lua_setupextent(
         lua::Table ent, int type,
         float x, float y, float z,
-        int attr1, int attr2, int attr3, int attr4
+        int attr1, int attr2, int attr3, int attr4, int attr5
     )
     {
         LogicSystem::setupExtent(
-            ent, type, x, y, z, attr1, attr2, attr3, attr4
+            ent, type, x, y, z, attr1, attr2, attr3, attr4, attr5
         );
     }
 
@@ -84,6 +84,8 @@ namespace lapi_binds
     {
         LAPI_GET_ENT(entity, self, "CAPI.setsoundvol", return)
         logger::log(logger::DEBUG, "CAPI.setsoundvol(%i)\n", vol);
+
+        if (!entity->sndname) return;
 
         extentity *ext = entity->staticEntity;
         assert(ext);
@@ -157,6 +159,7 @@ namespace lapi_binds
     EXTENT_ACCESSORS(attr2)
     EXTENT_ACCESSORS(attr3)
     EXTENT_ACCESSORS(attr4)
+    EXTENT_ACCESSORS(attr5)
     #undef EXTENT_ACCESSORS
 
     #define EXTENT_LE_ACCESSORS(n, an) \
@@ -404,6 +407,9 @@ namespace lapi_binds
         LAPI_REG(getattr4);
         LAPI_REG(setattr4);
         LAPI_REG(FAST_setattr4);
+        LAPI_REG(getattr5);
+        LAPI_REG(setattr5);
+        LAPI_REG(FAST_setattr5);
         LAPI_REG(getcollisionradw);
         LAPI_REG(setcollisionradw);
         LAPI_REG(getcollisionradh);

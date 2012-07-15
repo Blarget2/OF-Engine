@@ -102,8 +102,7 @@ struct decalrenderer
         bvec color;
         if(flags&DF_OVERBRIGHT)
         {
-            if(renderpath!=R_FIXEDFUNCTION || hasTE) color = bvec(128, 128, 128);
-            else color = bvec(alpha, alpha, alpha);
+            color = bvec(128, 128, 128);
         }
         else
         {
@@ -206,6 +205,7 @@ struct decalrenderer
     {
         enablepolygonoffset(GL_POLYGON_OFFSET_FILL);
 
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
         glDepthMask(GL_FALSE);
         glEnable(GL_BLEND);
 
@@ -222,6 +222,7 @@ struct decalrenderer
 
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
         disablepolygonoffset(GL_POLYGON_OFFSET_FILL);
     }
@@ -230,27 +231,11 @@ struct decalrenderer
     {
         if(startvert==endvert) return;
 
-        float oldfogc[4];
-        if(flags&(DF_ADD|DF_INVMOD|DF_OVERBRIGHT))
-        {
-            glGetFloatv(GL_FOG_COLOR, oldfogc);
-            static float zerofog[4] = { 0, 0, 0, 1 }, grayfog[4] = { 0.5f, 0.5f, 0.5f, 1 };
-            glFogfv(GL_FOG_COLOR, flags&DF_OVERBRIGHT && (renderpath!=R_FIXEDFUNCTION || hasTE) ? grayfog : zerofog);
-        }
         
         if(flags&DF_OVERBRIGHT) 
         {
-            if(renderpath!=R_FIXEDFUNCTION)
-            {
-                glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); 
-                SETSHADER(overbrightdecal);
-            }
-            else if(hasTE)
-            {
-                glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-                setuptmu(0, "T , C @ Ca");
-            }
-            else glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);
+            glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR); 
+            SETSHADER(overbrightdecal);
         }
         else 
         {
@@ -260,10 +245,9 @@ struct decalrenderer
 
             if(flags&DF_SATURATE)
             {
-                if(renderpath!=R_FIXEDFUNCTION) SETSHADER(saturatedecal);
-                else if(hasTE) setuptmu(0, "C * T x 2");
+                SETSHADER(saturatedecal);
             }
-            else foggedshader->set();
+            else SETSHADER(decal);
         }
 
         glBindTexture(GL_TEXTURE_2D, tex->id);
@@ -280,9 +264,6 @@ struct decalrenderer
             glDrawArrays(GL_TRIANGLES, 0, endvert);
         }
         xtravertsva += count;
-
-        if(flags&(DF_ADD|DF_INVMOD|DF_OVERBRIGHT)) glFogfv(GL_FOG_COLOR, oldfogc);
-        if(flags&(DF_OVERBRIGHT|DF_SATURATE) && hasTE) resettmu(0);
     }
 
     decalinfo &newdecal()
@@ -335,7 +316,7 @@ struct decalrenderer
         if(endvert==dstart) return;
 
         decalinfo &d = newdecal();
-        d.color = color;
+        d.color = hdr && !(flags&DF_INVMOD) ? bvec(color).shr(1) : color;
         d.millis = lastmillis;
         d.startvert = dstart;
         d.endvert = endvert;
@@ -382,15 +363,20 @@ struct decalrenderer
         vec planes[2];
         if(mat)
         {
-            vec vo = o.tovec(), scale;
-            int dim = dimension(orient), dc = dimcoord(orient), c = C[dim], r = R[dim];
-            vo[dim] += dc ? -0.1f : 0.1f;
-            scale[c] = mat->csize/8.0f;
-            scale[r] = mat->rsize/8.0f;
-            scale[dim] = 0;
-            loopk(4) pos[numverts++] = facecoords[orient][k].tovec().mul(scale).add(vo);
             planes[0] = vec(0, 0, 0);
-            planes[0][dim] = dc ? 1 : -1;
+            switch(orient)
+            {
+            #define GENFACEORIENT(orient, v0, v1, v2, v3) \
+                case orient: \
+                    planes[0][dimension(orient)] = dimcoord(orient) ? 1 : -1; \
+                    v0 v1 v2 v3 \
+                    break;
+            #define GENFACEVERT(orient, vert, x,y,z, xv,yv,zv) \
+                    pos[numverts++] = vec(x xv, y yv, z zv);
+                GENFACEVERTS(o.x, o.x, o.y, o.y, o.z, o.z, , + mat->csize, , + mat->rsize, + 0.1f, - 0.1f);
+            #undef GENFACEORIENT
+            #undef GENFACEVERT 
+            }
         }
         else if(cu.texture[orient] == DEFAULT_SKY) return;
         else if(cu.ext && (numverts = cu.ext->surfaces[orient].numverts&MAXFACEVERTS))
@@ -567,8 +553,7 @@ decalrenderer decals[] =
 {
     decalrenderer("<grey>data/textures/particles/scorch.png", DF_ROTATE, 500),
     decalrenderer("<grey>data/textures/particles/blood.png", DF_RND4|DF_ROTATE|DF_INVMOD),
-    decalrenderer("<grey><decal>data/textures/particles/bullet.png", DF_OVERBRIGHT),
-    decalrenderer("<grey>data/textures/particles/decal.png", 0, 25, 500, 20), // SAUER ENHANCED
+    decalrenderer("<grey>data/textures/particles/bullet.png", DF_OVERBRIGHT)
 };
 
 void initdecals()

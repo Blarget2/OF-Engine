@@ -9,7 +9,6 @@
     #include "client_engine_additions.h"
     #include "client_system.h"
     #include "targeting.h"
-    #include "textedit.h"
 #endif
 #include "editing_system.h"
 #include "message_system.h"
@@ -49,7 +48,6 @@ if (!name) \
 #include "of_lapi_shaders.h"
 #include "of_lapi_sound.h"
 #include "of_lapi_tex.h"
-#include "of_lapi_textedit.h"
 #include "of_lapi_world.h"
 
 #undef LAPI_EMPTY
@@ -81,6 +79,81 @@ namespace lapi
 
     void setup_binds();
 
+    static int create_table(lua_State *L) {
+        lua_createtable(L, luaL_optinteger(L, 1, 0), luaL_optinteger(L, 2, 0));
+        return 1;
+    }
+
+    static int to_udata_gc(lua_State *L) {
+        luaL_unref(L, LUA_REGISTRYINDEX,
+            *((int*)luaL_checkudata(L, 1, "Reference")));
+        return 0;
+    }
+
+    static int to_udata_get(lua_State *L) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX,
+            *((int*)luaL_checkudata(L, 1, "Reference")));
+        return 1;
+    }
+
+    static int to_udata_set(lua_State *L) {
+        int *ud = (int*)luaL_checkudata(L, 1, "Reference");
+        luaL_unref(L, LUA_REGISTRYINDEX, *ud);
+
+        lua_pushvalue(L, 2);
+        *ud = luaL_ref(L, LUA_REGISTRYINDEX);
+        return 0;
+    }
+
+    static int to_udata_tostring(lua_State *L) {
+        int *ud = (int*)luaL_checkudata(L, 1, "Reference");
+
+        lua_getglobal(L, "tostring");
+        lua_rawgeti  (L, LUA_REGISTRYINDEX, *ud);
+        lua_call     (L, 1, 1);
+
+        const char *str = lua_tostring(L, -1);
+        lua_pop(L, 1);
+
+        lua_pushfstring(L, "reference: %p (%s)", ud, str);
+        return 1;
+    }
+
+    static int to_udata(lua_State *L) {
+        lua_pushvalue(L, 1);
+        int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+        int *ud = (int*)lua_newuserdata(L, sizeof(void*));
+        *ud = ref;
+
+        if (luaL_newmetatable(L, "Reference")) {
+            lua_pushliteral  (L, "__gc");
+            lua_pushcfunction(L, &to_udata_gc);
+            lua_settable     (L, -3);
+
+            lua_pushliteral  (L, "__tostring");
+            lua_pushcfunction(L, &to_udata_tostring);
+            lua_settable     (L, -3);
+
+            lua_pushliteral  (L, "__index");
+            lua_createtable  (L, 0, 2);
+
+            lua_pushliteral  (L, "get");
+            lua_pushcfunction(L, &to_udata_get);
+            lua_settable     (L, -3);
+
+            lua_pushliteral  (L, "set");
+            lua_pushcfunction(L, &to_udata_set);
+            lua_settable     (L, -3);
+
+            lua_settable     (L, -3);
+        }
+
+        lua_setmetatable(L, -2);
+
+        return 1;
+    }
+
     void init(const char *dir)
     {
         if (initialized) return;
@@ -96,6 +169,14 @@ namespace lapi
         state.open_math   ();
         state.open_package();
         state.open_debug  ();
+        state.open_os     ();
+        state.open_io     ();
+
+        lua_pushcfunction(state.state(), luaopen_ffi);
+        lua_call         (state.state(), 0, 0);
+
+        lua_pushcfunction(state.state(), luaopen_bit);
+        lua_call         (state.state(), 0, 0);
 
         lua_State *L  = state.state();
         Table loaded  = state.registry()["_LOADED"];
@@ -107,6 +188,10 @@ namespace lapi
             homedir, PATHDIV, PATHDIV
         );
         lua_pushfstring(
+            L, ";%sdata%c?.lua",
+            homedir, PATHDIV
+        );
+        lua_pushfstring(
             L, ";%sdata%clibrary%c?%cinit.lua",
             homedir, PATHDIV, PATHDIV, PATHDIV
         );
@@ -115,17 +200,19 @@ namespace lapi
         lua_pushliteral(L, ";./data/library/core/?.lua");
         lua_pushliteral(L, ";./data/library/core/?/init.lua");
         lua_pushliteral(L, ";./data/?/init.lua");
+        lua_pushliteral(L, ";./data/?.lua");
         lua_pushliteral(L, ";./data/library/?/init.lua");
 
-        lua_concat(L,  6);
+        lua_concat(L,  8);
         Object str(L, -1);
         lua_pop   (L,  1);
         package["path"] = str;
 
-        /* restrict package */
-        Table pkg = state.new_table(0, 1);
-        pkg  ["seeall" ] = package["seeall"];
-        state["package"] = pkg;
+        /* table allocation */
+        state["createtable"] = &create_table;
+
+        /* reference management functions */
+        state["toref"] = &to_udata;
 
         setup_binds();
     }
@@ -145,16 +232,6 @@ namespace lapi
         auto err = state.do_file(p, lua::ERROR_TRACEBACK);
         if (types::get<0>(err))
             logger::log(logger::ERROR, "%s\n", types::get<1>(err));
-    }
-
-    void unload_module(const char *name)
-    {
-        Table loaded = state.registry().get<Table>("_LOADED");
-
-        state [name] = nil;
-        loaded[name] = nil;
-        loaded.get<Table>("package")
-              .get<Table>("loaded" )[name] = nil;
     }
 
     void setup_binds()
@@ -185,14 +262,8 @@ namespace lapi
         CAPI_REG(shaders);
         CAPI_REG(sound);
         CAPI_REG(tex);
-        CAPI_REG(textedit);
         CAPI_REG(world);
         #undef CAPI_REG
-
-        api_all["INFO"   ] = (int)logger::INFO;
-        api_all["DEBUG"  ] = (int)logger::DEBUG;
-        api_all["WARNING"] = (int)logger::WARNING;
-        api_all["ERROR"  ] = (int)logger::ERROR;
 
         state.register_module("CAPI", api_all);
         state.register_module("obj",  objcommands());
@@ -206,55 +277,38 @@ namespace lapi
 
     void reset()
     {
-        Vector<String> list;
-
-        list.push_back("table");
-        list.push_back("string");
-        list.push_back("math");
-        list.push_back("package");
-        list.push_back("debug");
-        list.push_back("obj");
-        list.push_back("coroutine");
-        list.push_back("_G");
-        list.push_back("CAPI");
-        list.push_back("md3");
-        list.push_back("md5");
-        list.push_back("smd");
-        list.push_back("iqm");
-        list.push_back("obj");
-
-        Table t = state.get<Table>("library", "unresettable");
-        for (Table::it it = t.begin(); it != t.end(); ++it)
-            list.push_back((*it).to<const char*>());
-
-        t = state.registry().get<Object>("_LOADED");
-        for (Table::pit it = t.pbegin(); it != t.pend(); ++it)
+        /*for (
+            Table::pit it = state.globals().pbegin();
+            it != state.globals().pend();
+            ++it
+        )
         {
             const char *key = (*it).first.to<const char*>();
             if (!key) continue;
 
-            for (size_t i = 0; i < list.length(); ++i)
-                if (list[i] == key) goto end;
+            if (state.get<Function>(
+                "LAPI", "Library", "is_unresettable"
+            ).call<bool>(key)) continue;
 
-            unload_module(key);
-end:
-            continue;
+            Type type = (*it).second.type();
+            Object o(state.registry().get<Object>("_LOADED", key));
+
+            if (strcmp(key, "_G") && type == TYPE_TABLE && o.is_nil())
+                state[key] = nil;
         }
 
-        load_module("init");
+        state.get<Function>("LAPI", "Library", "reset")();
+
+        load_module("init");*/
     }
 
-    bool load_library(const char *version)
+    bool load_library(const char *name)
     {
-        if (!version) return false;
-
-        Function tonumber = state["tonumber"];
-        if (tonumber.call<Object>(version).is_nil())
-            return false;
+        if (!name || strstr(name, "..")) return false;
 
         Table package = state.registry().get<Object>("_LOADED", "package");
 
-        String pattern = String().format(";./data/library/%s/?.lua", version);
+        String pattern = String().format(";./data/library/%s/?.lua", name);
         Function  find = state.get<Object>("string", "find");
 
         if (!find.call<Object>(package["path"], pattern).is_nil())
@@ -268,11 +322,11 @@ end:
         /* home directory path */
         lua_pushfstring(
             L, ";%sdata%clibrary%c%s%c?.lua",
-            homedir, PATHDIV, PATHDIV, version, PATHDIV
+            homedir, PATHDIV, PATHDIV, name, PATHDIV
         );
 
         /* root path */
-        lua_pushfstring(L, ";./data/library/%s/?.lua", version);
+        lua_pushfstring(L, ";./data/library/%s/?.lua", name);
 
         lua_concat(L,  3);
         Object str(L, -1);

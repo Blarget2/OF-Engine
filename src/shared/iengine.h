@@ -4,9 +4,9 @@ struct CLogicEntity;
 
 extern int curtime;                     // current frame time
 extern int lastmillis;                  // last time
-extern int skymillis;                    // INTENSITY: SkyManager: for skies, this needs to be reset for proper sync'ing.
 extern int totalmillis;                 // total elapsed time
 extern uint totalsecs;
+extern int gamespeed, paused;
 
 enum
 {
@@ -49,7 +49,7 @@ extern float raycubepos(const vec &o, const vec &ray, vec &hit, float radius = 0
 extern float rayfloor  (const vec &o, vec &floor, int mode = 0, float radius = 0);
 extern bool  raycubelos(const vec &o, const vec &dest, vec &hitpos);
 
-extern int& thirdperson;
+extern int thirdperson;
 extern bool isthirdperson();
 
 extern bool settexture(const char *name, int clamp = 0);
@@ -68,6 +68,19 @@ struct selinfo
     int size() const    { return s.x*s.y*s.z; }
     int us(int d) const { return s[d]*grid; }
     bool operator==(const selinfo &sel) const { return o==sel.o && s==sel.s && grid==sel.grid && orient==sel.orient; }
+    bool validate()
+    {
+        extern int worldsize;
+        if(grid <= 0 || grid >= worldsize) return false;
+        if(o.x >= worldsize || o.y >= worldsize || o.z >= worldsize) return false;
+        if(o.x < 0) { s.x -= (grid - 1 - o.x)/grid; o.x = 0; } 
+        if(o.y < 0) { s.y -= (grid - 1 - o.y)/grid; o.y = 0; } 
+        if(o.z < 0) { s.z -= (grid - 1 - o.z)/grid; o.z = 0; } 
+        s.x = clamp(s.x, 0, (worldsize - o.x)/grid);
+        s.y = clamp(s.y, 0, (worldsize - o.y)/grid);
+        s.z = clamp(s.z, 0, (worldsize - o.z)/grid);
+        return s.x > 0 && s.y > 0 && s.z > 0;
+    }
 };
 
 struct editinfo;
@@ -199,25 +212,18 @@ enum
 {
     PART_BLOOD = 0,
     PART_WATER,
-    PART_SMOKE, PART_SOFTSMOKE,
+    PART_SMOKE,
     PART_STEAM,
     PART_FLAME,
     PART_FIREBALL1, PART_FIREBALL2, PART_FIREBALL3,
     PART_STREAK, PART_LIGHTNING,
     PART_EXPLOSION, PART_EXPLOSION_BLUE,
     PART_SPARK, PART_EDIT,
-    PART_MUZZLE_FLASH1, PART_MUZZLE_FLASH2, PART_MUZZLE_FLASH3, PART_MUZZLE_FLASH4A, PART_MUZZLE_FLASH4B, PART_MUZZLE_FLASH5,
+    PART_SNOW,
+    PART_MUZZLE_FLASH1, PART_MUZZLE_FLASH2, PART_MUZZLE_FLASH3,
     PART_TEXT,
     PART_METER, PART_METER_VS,
     PART_LENS_FLARE,
-    PART_FLAME1, PART_FLAME2, PART_FLAME3, PART_FLAME4,
-    PART_SNOW, PART_RAIN,
-    PART_BULLET,
-    PART_GLOW, PART_GLOW_TRACK,
-    PART_LFLARE,
-    PART_BUBBLE,
-    PART_EXPLODE,
-    PART_SMOKETRAIL,
     // here come editmode particle images, they must ALWAYS be the last
     PART_EDIT_LIGHT,
     PART_EDIT_SPOTLIGHT,
@@ -229,19 +235,16 @@ enum
     PART_EDIT_GENERIC
 };
 
-
-
 extern bool canaddparticles();
-extern void particle_explodesplash(const vec &o, int fade, int type, int color = 0xFFFFFF, int size = 1, int gravity = -20, int num = 16);
-extern void particle_flying_flare(const vec &o, const vec &d, int fade, int type, int color, float size, int gravity = 0);
+extern void regular_particle_splash(int type, int num, int fade, const vec &p, int color = 0xFFFFFF, float size = 1.0f, int radius = 150, int gravity = 2, int delay = 0);
 extern void regular_particle_flame(int type, const vec &p, float radius, float height, int color, int density = 3, float scale = 2.0f, float speed = 200.0f, float fade = 600.0f, int gravity = -15);
-extern void regular_particle_splash(int type, int num, int fade, const vec &p, int color = 0xFFFFFF, float size = 1.0f, int radius = 150, int gravity = 2, int delay = 0, bool hover = false, int grow = 0);
-extern void particle_splash(int type, int num, int fade, const vec &p, int color = 0xFFFFFF, float size = 1.0f, int radius = 150, int gravity = 2, bool regfade = false, int flag = 0, bool fastsplash = false, int grow = 0);
-extern void particle_trail(int type, int fade, const vec &from, const vec &to, int color = 0xFFFFFF, float size = 1.0f, int gravity = 20, bool bubbles = false);
+extern void particle_splash(int type, int num, int fade, const vec &p, int color = 0xFFFFFF, float size = 1.0f, int radius = 150, int gravity = 2);
+extern void particle_trail(int type, int fade, const vec &from, const vec &to, int color = 0xFFFFFF, float size = 1.0f, int gravity = 20);
 extern void particle_text(const vec &s, const char *t, int type, int fade = 2000, int color = 0xFFFFFF, float size = 2.0f, int gravity = 0);
 extern void particle_textcopy(const vec &s, const char *t, int type, int fade = 2000, int color = 0xFFFFFF, float size = 2.0f, int gravity = 0);
+extern void particle_icon(const vec &s, int ix, int iy, int type, int fade = 2000, int color = 0xFFFFFF, float size = 2.0f, int gravity = 0);
 extern void particle_meter(const vec &s, float val, int type, int fade = 1, int color = 0xFFFFFF, int color2 = 0xFFFFF, float size = 2.0f);
-extern void particle_flare(const vec &p, const vec &dest, int fade, int type, int color = 0xFFFFFF, float size = 0.28f, physent *owner = NULL, int grow = 0);
+extern void particle_flare(const vec &p, const vec &dest, int fade, int type, int color = 0xFFFFFF, float size = 0.28f, physent *owner = NULL);
 extern void particle_fireball(const vec &dest, float max, int type, int fade = -1, int color = 0xFFFFFF, float size = 4.0f);
 extern void removetrackedparticles(physent *owner = NULL);
 
@@ -250,8 +253,7 @@ enum
 {
     DECAL_SCORCH = 0,
     DECAL_BLOOD,
-    DECAL_BULLET,
-    DECAL_DECAL
+    DECAL_BULLET
 };
 
 extern void adddecal(int type, const vec &center, const vec &surface, float radius, const bvec &color = bvec(0xFF, 0xFF, 0xFF), int info = 0);
@@ -301,7 +303,7 @@ extern void stopsounds();
 extern void initsound();
 
 // rendermodel
-enum { MDL_CULL_VFC = 1<<0, MDL_CULL_DIST = 1<<1, MDL_CULL_OCCLUDED = 1<<2, MDL_CULL_QUERY = 1<<3, MDL_SHADOW = 1<<4, MDL_DYNSHADOW = 1<<5, MDL_LIGHT = 1<<6, MDL_DYNLIGHT = 1<<7, MDL_FULLBRIGHT = 1<<8, MDL_NORENDER = 1<<9, MDL_LIGHT_FAST = 1<<10, MDL_HUD = 1<<11, MDL_GHOST = 1<<12 };
+enum { MDL_CULL_VFC = 1<<0, MDL_CULL_DIST = 1<<1, MDL_CULL_OCCLUDED = 1<<2, MDL_CULL_QUERY = 1<<3, MDL_FULLBRIGHT = 1<<4, MDL_NORENDER = 1<<5, MDL_MAPMODEL = 1<<6, MDL_NOBATCH = 1<<7 };
 
 struct model;
 struct modelattach
@@ -316,11 +318,8 @@ struct modelattach
     modelattach(const char *tag, vec *pos) : tag(tag), name(NULL), anim(-1), basetime(0), pos(pos), m(NULL) {}
 };
 
-extern void startmodelbatches();
-extern void endmodelbatches();
-extern void rendermodel(entitylight *light, const char *mdl, int anim, const vec &o, CLogicEntity *entity, float yaw = 0, float pitch = 0, int cull = MDL_CULL_VFC | MDL_CULL_DIST | MDL_CULL_OCCLUDED | MDL_LIGHT, dynent *d = NULL, modelattach *a = NULL, int basetime = 0, int basetime2 = 0, float trans = 1);
+extern void rendermodel(const char *mdl, int anim, const vec &o, float yaw = 0, float pitch = 0, int cull = MDL_CULL_VFC | MDL_CULL_DIST | MDL_CULL_OCCLUDED, dynent *d = NULL, modelattach *a = NULL, int basetime = 0, int basetime2 = 0, float size = 1);
 extern void abovemodel(vec &o, const char *mdl);
-extern void rendershadow(dynent *d);
 extern void renderclient(dynent *d, const char *mdlname, CLogicEntity *entity, modelattach *attachments, int hold, int attack, int attackdelay, int lastaction, int lastpain, float fade = 1, bool ragdoll = false); // INTENSITY: Added entity
 extern void interpolateorientation(dynent *d, float &interpyaw, float &interppitch);
 extern void setbbfrommodel(dynent *d, const char *mdl, CLogicEntity *entity); // INTENSITY: Added entity
@@ -398,13 +397,9 @@ extern bool checkchallenge(const char *answerstr, void *correct);
 struct Texture;
 struct VSlot;
 
-enum { EDITORFOCUSED = 1, EDITORUSED, EDITORFOREVER };
-
-#include "intensity.h" // INTENSITY
-
 // octa
 
-extern int& worldsize;
+extern int worldsize;
 
 static inline bool insideworld(const vec &o)
 {

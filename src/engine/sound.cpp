@@ -26,7 +26,23 @@ struct soundsample
 struct soundslot
 {
     soundsample *sample;
-    int volume, maxuses;
+    int volume;
+};
+
+struct soundconfig
+{
+    int slots, numslots;
+    int maxuses;
+
+    bool hasslot(const soundslot *p, const vector<soundslot> &v) const
+    {
+        return p >= v.getbuf() + slots && p < v.getbuf() + slots+numslots && slots+numslots < v.length(); 
+    }
+
+    int chooseslot() const
+    {
+        return numslots > 1 ? slots + rnd(numslots) : slots;
+    }
 };
 
 struct soundchannel
@@ -34,7 +50,7 @@ struct soundchannel
     int id;
     bool inuse;
     vec loc; 
-    soundslot *slot; 
+    soundslot *slot;
     extentity *ent; 
     int radius, volume, pan;
     bool dirty;
@@ -138,16 +154,17 @@ void stopmusic()
     DELETEP(musicstream);
 }
 
+VARF(sound, 0, 1, 1, initwarning("sound configuration", INIT_RESET, CHANGE_SOUND));
 VARF(soundchans, 1, 32, 128, initwarning("sound configuration", INIT_RESET, CHANGE_SOUND));
 VARF(soundfreq, 0, MIX_DEFAULT_FREQUENCY, 44100, initwarning("sound configuration", INIT_RESET, CHANGE_SOUND));
 VARF(soundbufferlen, 128, 1024, 4096, initwarning("sound configuration", INIT_RESET, CHANGE_SOUND));
 
 void initsound()
 {
-    if(Mix_OpenAudio(soundfreq, MIX_DEFAULT_FORMAT, 2, soundbufferlen)<0)
+    if(!sound || Mix_OpenAudio(soundfreq, MIX_DEFAULT_FORMAT, 2, soundbufferlen)<0)
     {
         nosound = true;
-        conoutf(CON_ERROR, "sound init failed (SDL_mixer): %s", (size_t)Mix_GetError());
+        if(sound) conoutf(CON_ERROR, "sound init failed (SDL_mixer): %s", (size_t)Mix_GetError());
         return;
     }
     Mix_AllocateChannels(soundchans);    
@@ -216,19 +233,25 @@ bool startmusic(const char *name, const char *cmd)
     return false;
 }
 
-hashtable<const char *, soundsample> samples;
-vector<soundslot> gamesounds, mapsounds;
+static hashtable<const char *, soundsample> samples;
+static vector<soundslot> gameslots, mapslots;
+static vector<soundconfig> gamesounds, mapsounds;
 
-int findsound(const char *name, int vol, vector<soundslot> &sounds)
+static int findsound(const char *name, int vol, vector<soundconfig> &sounds, vector<soundslot> &slots)
 {
     loopv(sounds)
     {
-        if(!strcmp(sounds[i].sample->name, name) && (!vol || sounds[i].volume==vol)) return i;
+        soundconfig &s = sounds[i];
+        loopj(s.numslots)
+        {
+            soundslot &c = slots[s.slots+j];
+            if(!strcmp(c.sample->name, name) && (!vol || c.volume==vol)) return i;
+        }
     }
     return -1;
 }
 
-int addsound(const char *name, int vol, int maxuses, vector<soundslot> &sounds)
+static int addslot(const char *name, int vol, vector<soundslot> &slots)
 {
     soundsample *s = samples.access(name);
     if(!s)
@@ -238,20 +261,28 @@ int addsound(const char *name, int vol, int maxuses, vector<soundslot> &sounds)
         s->name = n;
         s->chunk = NULL;
     }
-    soundslot *oldsounds = sounds.getbuf();
-    int oldlen = sounds.length();
-    soundslot &slot = sounds.add();
-    // sounds.add() may relocate slot pointers
-    if(sounds.getbuf() != oldsounds) loopv(channels)
+    soundslot *oldslots = slots.getbuf();
+    int oldlen = slots.length();
+    soundslot &slot = slots.add();
+    // soundslots.add() may relocate slot pointers
+    if(slots.getbuf() != oldslots) loopv(channels)
     {
         soundchannel &chan = channels[i];
-        if(chan.inuse && chan.slot >= oldsounds && chan.slot < &oldsounds[oldlen])
-            chan.slot = &sounds[chan.slot - oldsounds];
+        if(chan.inuse && chan.slot >= oldslots && chan.slot < &oldslots[oldlen])
+            chan.slot = &slots[chan.slot - oldslots];
     }
     slot.sample = s;
     slot.volume = vol ? vol : 100;
-    slot.maxuses = maxuses;
     return oldlen;
+}
+
+static int addsound(const char *name, int vol, int maxuses, vector<soundconfig> &sounds, vector<soundslot> &slots)
+{
+    soundconfig &s = sounds.add();
+    s.slots = addslot(name, vol, slots);
+    s.numslots = 1;
+    s.maxuses = maxuses;
+    return sounds.length()-1;
 }
 
 void resetchannels()
@@ -267,7 +298,9 @@ void clear_sound()
     stopmusic();
     Mix_CloseAudio();
     resetchannels();
+    gameslots.setsize(0);
     gamesounds.setsize(0);
+    mapslots.setsize(0);
     mapsounds.setsize(0);
     samples.clear();
 }
@@ -279,6 +312,7 @@ void clearmapsounds()
         Mix_HaltChannel(i);
         freechannel(i);
     }
+    mapslots.setsize(0);
     mapsounds.setsize(0);
 }
 
@@ -286,8 +320,8 @@ void clearmapsounds()
 int playmapsound(const char *s, extentity *ent, int vol, int loops)
 { 
     if(!vol) vol = 100;
-    int id = findsound(s, vol, mapsounds);
-    if(id < 0) id = addsound(s, vol, 0, mapsounds);
+    int id = findsound(s, vol, mapsounds, mapslots);
+    if(id < 0) id = addsound(s, vol, 0, mapsounds, mapslots);
     return playsound(id, NULL, ent, loops, 0, -1, 0, -1, vol);
 }
 
@@ -426,10 +460,10 @@ int playsound(int n, const vec *loc, extentity *ent, int loops, int fade, int ch
 {
     if(nosound || !soundvol) return -1;
 
-    vector<soundslot> &sounds = ent ? mapsounds : gamesounds;
+    vector<soundslot> &slots = ent ? mapslots : gameslots;
+    vector<soundconfig> &sounds = ent ? mapsounds : gamesounds;
     if(!sounds.inrange(n)) { conoutf(CON_WARN, "unregistered sound: %d", n); return -1; }
-    soundslot &slot = sounds[n];
-    if(vol) slot.volume = vol;
+    soundconfig &config = sounds[n];
 
     if(loc && (maxsoundradius || radius > 0))
     {
@@ -437,7 +471,7 @@ int playsound(int n, const vec *loc, extentity *ent, int loops, int fade, int ch
         int rad = radius > 0 ? (maxsoundradius ? min(maxsoundradius, radius) : radius) : maxsoundradius;
         if(camera1->o.dist(*loc) > 1.5f*rad)
         {
-            if(channels.inrange(chanid) && channels[chanid].inuse && channels[chanid].slot == &slot)
+            if(channels.inrange(chanid) && channels[chanid].inuse && config.hasslot(channels[chanid].slot, slots))
             {
                 Mix_HaltChannel(chanid);
                 freechannel(chanid);
@@ -448,10 +482,10 @@ int playsound(int n, const vec *loc, extentity *ent, int loops, int fade, int ch
 
     if(chanid < 0)
     {
-        if(slot.maxuses)
+        if(config.maxuses)
         {
             int uses = 0;
-            loopv(channels) if(channels[i].inuse && channels[i].slot == &slot && ++uses >= slot.maxuses) return -1;
+            loopv(channels) if(channels[i].inuse && config.hasslot(channels[i].slot, slots) && ++uses >= config.maxuses) return -1;
         }
 
         // avoid bursts of sounds with heavy packetloss and in sp
@@ -461,8 +495,21 @@ int playsound(int n, const vec *loc, extentity *ent, int loops, int fade, int ch
         if(maxsoundsatonce && soundsatonce > maxsoundsatonce) return -1;
     }
 
+    if(channels.inrange(chanid))
+    {
+        soundchannel &chan = channels[chanid];
+        if(chan.inuse && config.hasslot(chan.slot, slots))
+        {
+            if(loc) chan.loc = *loc;
+            else if(chan.hasloc()) chan.clearloc();
+            return chanid;
+        }
+    }
+    if(fade < 0) return -1;
+
 // INTENSITY: Make this a macro, so it can be reused in preload_sound
-#define LOAD_SLOT(slot) \
+#define LOAD_SLOT(config, slots) \
+    soundslot &slot = slots[config.chooseslot()]; \
     if(!slot.sample->chunk) \
     { \
         if(!slot.sample->name[0]) return -1; \
@@ -480,7 +527,9 @@ int playsound(int n, const vec *loc, extentity *ent, int loops, int fade, int ch
         if(!slot.sample->chunk) { conoutf(CON_ERROR, "failed to load sample: %s", buf); return -1; } \
     } \
 
-    LOAD_SLOT(slot) // INTENSITY
+    LOAD_SLOT(config, slots) // INTENSITY
+
+    if(vol) slot.volume = vol;
 
     if(channels.inrange(chanid))
     {
@@ -525,11 +574,11 @@ int playsound(int n, const vec *loc, extentity *ent, int loops, int fade, int ch
 
 int preload_sound(const char *name, int vol) // INTENSITY: Actually preload sounds, for responsiveness
 {
-    int id = findsound(name, vol, gamesounds);
-    if(id < 0) id = addsound(name, vol, 0, gamesounds);
+    int id = findsound(name, vol, gamesounds, gameslots);
+    if(id < 0) id = addsound(name, vol, 0, gamesounds, gameslots);
     if(!gamesounds.inrange(id)) { conoutf(CON_WARN, "cannot preload sound: %s", name); return -1; }
-    soundslot &slot = gamesounds[id];
-    LOAD_SLOT(slot);
+    soundconfig &config = gamesounds[id];
+    LOAD_SLOT(config, gameslots);
     return id;
 }
 
@@ -537,7 +586,7 @@ int preload_sound(const char *name, int vol) // INTENSITY: Actually preload soun
 int getsoundid(const char *s, int vol)
 {
     if(!vol) vol = 100;
-    return findsound(s, vol, gamesounds);
+    return findsound(s, vol, gamesounds, gameslots);
 }
 
 // INTENSITY: stopsoundbyid, to stop some gamesound by ID
@@ -565,7 +614,7 @@ void stopsounds()
 
 bool stopsound(int n, int chanid, int fade)
 {
-    if(!channels.inrange(chanid) || !channels[chanid].inuse || !gamesounds.inrange(n) || channels[chanid].slot != &gamesounds[n]) return false;
+    if(!channels.inrange(chanid) || !channels[chanid].inuse || !gamesounds.inrange(n) || !gamesounds[n].hasslot(channels[chanid].slot, gameslots)) return false;
     if(dbgsound) conoutf("stopsound: %s", channels[chanid].slot->sample->name);
     if(!fade || !Mix_FadeOutChannel(chanid, fade))
     {
@@ -578,8 +627,8 @@ bool stopsound(int n, int chanid, int fade)
 int playsoundname(const char *s, const vec *loc, int vol, int loops, int fade, int chanid, int radius, int expire) 
 { 
     if(!vol) vol = 100;
-    int id = findsound(s, vol, gamesounds);
-    if(id < 0) id = addsound(s, vol, 0, gamesounds);
+    int id = findsound(s, vol, gamesounds, gameslots);
+    if(id < 0) id = addsound(s, vol, 0, gamesounds, gameslots);
     return playsound(id, loc, NULL, loops, fade, chanid, radius, expire);
 }
 
@@ -681,7 +730,7 @@ void initmumble()
         if(mumblelink)
         {
             mumbleinfo = (MumbleInfo *)MapViewOfFile(mumblelink, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(MumbleInfo));
-            if(mumbleinfo) wcsncpy(mumbleinfo->name, L"Sauerbraten", 256);
+            if(mumbleinfo) wcsncpy(mumbleinfo->name, L"Tesseract", 256);
         }
     #elif defined(_POSIX_SHARED_MEMORY_OBJECTS)
         defformatstring(shmname)("/MumbleLink.%d", getuid());
@@ -689,7 +738,7 @@ void initmumble()
         if(mumblelink >= 0)
         {
             mumbleinfo = (MumbleInfo *)mmap(NULL, sizeof(MumbleInfo), PROT_READ|PROT_WRITE, MAP_SHARED, mumblelink, 0);
-            if(mumbleinfo != (MumbleInfo *)-1) wcsncpy(mumbleinfo->name, L"Sauerbraten", 256);
+            if(mumbleinfo != (MumbleInfo *)-1) wcsncpy(mumbleinfo->name, L"Tesseract", 256);
         }
     #endif
     if(!VALID_MUMBLELINK) closemumble();

@@ -64,7 +64,7 @@ end
 
     This class inherits from <action_container>.
 ]]
-action_base = class.new(events.action_container, {
+action_base = table.subclass(events.action_container, {
     --[[!
         Function: client_click
         This happens on client on click. By default,
@@ -77,13 +77,13 @@ action_base = class.new(events.action_container, {
     end,
 
     --[[!
-        Function: do_start
+        Function: start
         This basically sets up some stuff before the cutscene can start.
         It saves original actor's yaw and pitch, makes him not able to move,
         hides a crosshair, any sort of HUD and ends.
     ]]
-    do_start = function(self)
-        events.action_container.do_start(self)
+    start = function(self)
+        events.action_container.start(self)
 
         self.actor.can_move = false
 
@@ -103,18 +103,18 @@ action_base = class.new(events.action_container, {
 
         self.old_seconds_left = self.seconds_left
 
-        events.action_input_capture_plugin.do_start(self)
+        events.action_input_capture_plugin.start(self)
     end,
 
     --[[!
-        Function: do_execute
+        Function: run
         This forces a yaw and pitch on unmovable actor, so you can't
         i.e. control your player with a mouse while the cutscene is
         running.
 
         It also shows subtitles and manages the timing.
     ]]
-    do_execute = function(self, seconds)
+    run = function(self, seconds)
         self.actor.yaw   = self.original_yaw
         self.actor.pitch = self.original_pitch
 
@@ -124,17 +124,17 @@ action_base = class.new(events.action_container, {
             )
         end
 
-        return events.action_container.do_execute(self, seconds)
+        return events.action_container.run(self, seconds)
             or entity_store.is_player_editing()
     end,
 
     --[[!
-        Function: do_finish
+        Function: finish
         Called when the cutscene ends. Restores the state set
-        up by <do_start>.
+        up by <start>.
     ]]
-   do_finish = function(self)
-        events.action_container.do_finish(self)
+   finish = function(self)
+        events.action_container.finish(self)
 
         self.actor.can_move = true
 
@@ -144,12 +144,12 @@ action_base = class.new(events.action_container, {
         CAPI.showhudrect  = self.old_show_hud_rect
         CAPI.showhudimage = self.old_show_hud_image
 
-        events.action_input_capture_plugin.do_finish(self)
+        events.action_input_capture_plugin.finish(self)
     end,
 
     --[[!
         Function: show_subtitles
-        Called from <do_execute> every frame. The time_val argument
+        Called from <run> every frame. The time_val argument
         is used to check whether to show a subtitle or not (this basically
         loops all available subtitles, checks them and shows if needed).
     ]]
@@ -177,7 +177,7 @@ action_base = class.new(events.action_container, {
     <action_base>. It manages the "points" the cutscene goes through
     and smooth interpolation between them.
 ]]
-action_smooth = class.new(actions.action, {
+action_smooth = table.subclass(actions.Action, {
     --[[!
         Variable: seconds_per_marker
         Specifies a number of seconds it takes to go between two
@@ -208,7 +208,7 @@ action_smooth = class.new(actions.action, {
     --[[!
         Function: init_markers
         A method that does nothing by default. It's called at the
-        beginning of <do_start> and is meant mainly for later
+        beginning of <start> and is meant mainly for later
         <cutscene_controller>. There it reads the marker entities
         and converts them into raw marker data to be used by this.
     ]]
@@ -216,10 +216,10 @@ action_smooth = class.new(actions.action, {
     end,
 
     --[[!
-        Function: do_start
+        Function: start
         Starts the smooth action. Manages the timer.
     ]]
-    do_start = function(self)
+    start = function(self)
         self:init_markers()
 
         self.timer = (- self.seconds_per_marker) / 2 - self.delay_before
@@ -227,19 +227,19 @@ action_smooth = class.new(actions.action, {
     end,
 
     --[[!
-        Function: do_execute
+        Function: run
         Per frame executed method taking care of camera forcing.
         Before doing that, it calls <set_markers> to perform
         proper interpolation.
     ]]
-    do_execute = function(self, seconds)
+    run = function(self, seconds)
         -- get around loading time delays by ignoring long frames
         self.timer = self.timer + math.min(seconds, 1 / 25)
 
         self:set_markers()
         camera.force(self.position, self.yaw, self.pitch, 0)
 
-        actions.action.do_execute(self, seconds)
+        actions.Action.run(self, seconds)
 
         if self.looped then
             if (not self.looping
@@ -411,7 +411,7 @@ entity_classes.register(
             self:before_start()
 
             if not self.m_tag then
-                self.m_tag = self.tags:as_array()[1]
+                self.m_tag = self.tags:to_array()[1]
             end
 
             local entity = self
@@ -435,19 +435,19 @@ entity_classes.register(
             end
 
             entity_store.get_player_entity():queue_action(
-                class.new(base_action, {
+                table.subclass(base_action, {
                     cancel = function(self)
                         if  self.cancellable
                         and entity.started
                         and not self.finished then
                             self.action_system:clear()
-                            self.action_system:manage(0.01)
+                            self.action_system:run(0.01)
                             self:finish()
                         end
                     end,
 
-                    do_start = function(self)
-                        self.__base.do_start(self)
+                    start = function(self)
+                        self.base_class.start(self)
 
                         self.cancellable = entity.cancellable
 
@@ -476,11 +476,11 @@ entity_classes.register(
                                 x       = start_mark[1].x_pos,
                                 y       = start_mark[1].y_pos,
                                 size    = start_mark[1].size,
-                                color   = tonumber(convert.rgb_to_hex(
+                                color   = rgbtohex(
                                     start_mark[1].red,
                                     start_mark[1].green,
                                     start_mark[1].blue
-                                ))
+                                )
                             })
                         end
                         while true do
@@ -504,23 +504,23 @@ entity_classes.register(
                                     x       = next_mark[1].x_pos,
                                     y       = next_mark[1].y_pos,
                                     size    = next_mark[1].size,
-                                    color   = tonumber(convert.rgb_to_hex(
+                                    color   = rgbtohex(
                                         next_mark[1].red,
                                         next_mark[1].green,
                                         next_mark[1].blue
-                                    ))
+                                    )
                                 })
                             end
                             i = i + 1
                         end
                     end,
 
-                    do_finish = function(self)
-                        self.__base.do_finish(self)
+                    finish = function(self)
+                        self.base_class.finish(self)
 
                         -- clear up the queue from base actions just in case
                         local player = entity_store.get_player_entity()
-                        local queue  = player.action_system.action_list
+                        local queue  = player.action_system(1) -- get
                         for i, v in pairs(queue) do
                             if v:is_a(base_action) then
                                 table.remove(queue, i)
@@ -536,7 +536,7 @@ entity_classes.register(
                         end
                     end
                 })({
-                    class.new(action_smooth, {
+                    table.subclass(action_smooth, {
                         init_markers = function(self)
                             self.markers            = {}
                             self.seconds_per_marker = entity.seconds_per_marker
@@ -601,13 +601,13 @@ entity_classes.register(
             connections remains up to date.
         ]]
         client_activate = function(self)
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("tags"),
                 function(self)
-                    self.m_tag = self.tags:as_array()[1]
+                    self.m_tag = self.tags:to_array()[1]
                 end
             )
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("next_controller"),
                 function(self)
                     -- flush the cache
@@ -698,10 +698,10 @@ entity_classes.register(
             connections remains up to date.
         ]]
         client_activate = function(self)
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("tags"),
                 function(self)
-                    self.m_tag = self.tags:as_array()[1]
+                    self.m_tag = self.tags:to_array()[1]
                     -- flush the cache
                     for k, v in pairs(self) do
                         if string.sub(k, 1, 9) == "__CACHED_" then
@@ -710,7 +710,7 @@ entity_classes.register(
                     end
                 end
             )
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("next_marker"),
                 function(self)
                     -- flush the cache
@@ -731,7 +731,7 @@ entity_classes.register(
             if not entity_store.is_player_editing() then return nil end
 
             if not self.m_tag then
-                self.m_tag = self.tags:as_array()[1]
+                self.m_tag = self.tags:to_array()[1]
                 if not self.m_tag then
                     return nil
                 end
@@ -750,7 +750,7 @@ entity_classes.register(
                 show_distance("ctl_" .. arr[2], self, 0x22FF27)
             end
 
-            local direction = math.vec3():from_yaw_pitch(self.yaw, self.pitch)
+            local direction = math.Vec3():from_yaw_pitch(self.yaw, self.pitch)
             local target    = geometry.get_ray_collision_world(
                 self.position:copy(), direction, 10
             )
@@ -829,10 +829,10 @@ entity_classes.register(
             connections remains up to date.
         ]]
         client_activate = function(self)
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("tags"),
                 function(self)
-                    self.m_tag = self.tags:as_array()[1]
+                    self.m_tag = self.tags:to_array()[1]
                     -- flush the cache
                     for k, v in pairs(self) do
                         if string.sub(k, 1, 9) == "__CACHED_" then
@@ -841,7 +841,7 @@ entity_classes.register(
                     end
                 end
             )
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("parent_id"),
                 function(self)
                     -- flush the cache
@@ -862,7 +862,7 @@ entity_classes.register(
             if not entity_store.is_player_editing() then return nil end
 
             if not self.m_tag then
-                self.m_tag = self.tags:as_array()[1]
+                self.m_tag = self.tags:to_array()[1]
                 if not self.m_tag then
                     return nil
                 end
@@ -930,10 +930,10 @@ entity_classes.register(
             connections remains up to date.
         ]]
         client_activate = function(self)
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("tags"),
                 function(self)
-                    self.m_tag = self.tags:as_array()[1]
+                    self.m_tag = self.tags:to_array()[1]
                     -- flush the cache
                     for k, v in pairs(self) do
                         if string.sub(k, 1, 9) == "__CACHED_" then
@@ -960,7 +960,7 @@ entity_classes.register(
             if not entity_store.is_player_editing() then return nil end
 
             if not self.m_tag then
-                self.m_tag = self.tags:as_array()[1]
+                self.m_tag = self.tags:to_array()[1]
                 if not self.m_tag then
                     return nil
                 end
@@ -977,27 +977,27 @@ entity_classes.register(
             Variable: action
             Actual action used by <cutscene_controller>. This
             inherits from <action_base>. By default, it inherits
-            do_start, do_execute and show_subtitle_background
+            start, run and show_subtitle_background
             methods.
         ]]
-        action = class.new(action_base, {
-            do_start = function(self)
-                self.__base.do_start(self)
+        action = table.subclass(action_base, {
+            start = function(self)
+                self.base_class.start(self)
 
                 self.background_image    = ""
                 self.subtitle_background = ""
             end,
 
-            do_execute = function(self, seconds)
+            run = function(self, seconds)
                 if self.background_image ~= "" then
                     self.old_show_hud_image(
                         self.background_image,
                         0.5, 0.5,
-                        math.max((scr_w / scr_h), 1),
-                        math.min((scr_w / scr_h), 1)
+                        math.max((EVAR.scr_w / EVAR.scr_h), 1),
+                        math.min((EVAR.scr_w / EVAR.scr_h), 1)
                     )
                 end
-                return self.__base.do_execute(self, seconds)
+                return self.base_class.run(self, seconds)
             end,
 
             show_subtitle_background = function(self)
@@ -1008,8 +1008,8 @@ entity_classes.register(
                             self.subtitle_background,
                             0.5,
                             0.9,
-                            (factors.x * 800) / scr_w,
-                            (factors.y * 128) / scr_h
+                            (factors.x * 800) / EVAR.scr_w,
+                            (factors.y * 128) / EVAR.scr_h
                         )
                     end
                 end
@@ -1025,8 +1025,8 @@ entity_classes.register(
 
     Same as <cutscene_base_action>, this encapsulates the actual
     <action>, which is represented by a raw table to mix inside
-    the smooth action. It can contain do_start, do_execute and
-    do_finish and user-defined methods.
+    the smooth action. It can contain start, run and
+    finish and user-defined methods.
 
     This is useful when you need something that manages events,
     like opening doors the camera goes through.
@@ -1042,10 +1042,10 @@ entity_classes.register(
             connections remains up to date.
         ]]
         client_activate = function(self)
-            self:connect(
+            signal.connect(self,
                 state_variables.get_on_modify_name("tags"),
                 function(self)
-                    self.m_tag = self.tags:as_array()[1]
+                    self.m_tag = self.tags:to_array()[1]
                     -- flush the cache
                     for k, v in pairs(self) do
                         if string.sub(k, 1, 9) == "__CACHED_" then
@@ -1064,7 +1064,7 @@ entity_classes.register(
             if not entity_store.is_player_editing() then return nil end
 
             if not self.m_tag then
-                self.m_tag = self.tags:as_array()[1]
+                self.m_tag = self.tags:to_array()[1]
                 if not self.m_tag then
                     return nil
                 end
@@ -1078,8 +1078,8 @@ entity_classes.register(
         end,
 
         action = {
-            -- extend with do_start, do_execute,
-            -- do_finish, don't forget to call parent
+            -- extend with start, run,
+            -- finish, don't forget to call parent
         }
     }}, "cutscene_action"), "playerstart"
 )

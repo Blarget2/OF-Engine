@@ -22,6 +22,14 @@
 ]]
 module("state_variables", package.seeall)
 
+local function todec2str(v)
+    v = v or 0
+    if math.abs(v) < 0.01 then return "0" end
+    local r = tostring(v)
+    local p = string.find(r, "%.")
+    return not p and r or string.sub(r, 1, p + 2)
+end
+
 --[[!
     Function: get_on_modify_name
     Gets "on modify" name for state variables on either client or server.
@@ -99,38 +107,6 @@ function __get_gui_name(uid, sv_name)
 end
 
 --[[!
-    Event: simplifier
-    Registers a JSON simplifier for entity instances.
-    See <json.register>. When JSON finds it should
-    encode something that is an entity instance,
-    instead of encoding it in a raw way, it substitutes
-    it with entity's unique ID. We don't mostly need more,
-    and this can save bandwidth very much.
-
-    Code:
-        (start code)
-            json.register(
-                function(value)
-                    return (type(value) == "table"
-                             and value.uid ~= nil)
-                end,
-                function(value)
-                    return value.uid
-                end
-            )
-        (end
-]]
-json.register(
-    function(value)
-        return (type(value) == "table"
-                 and value.uid ~= nil)
-    end,
-    function(value)
-        return value.uid
-    end
-)
-
---[[!
     Class: state_variable
     Base state variable class. Other state variable classes inherit from
     this one, providing their own methods to convert from / to wire format
@@ -190,7 +166,7 @@ state_variable = class.new(nil, {
             clients).
     ]]
     __init = function(self, kwargs)
-        logging.log(logging.INFO, "state_variable: constructor ..")
+        log(INFO, "state_variable: constructor ..")
 
         if not kwargs then
             kwargs = {}
@@ -221,7 +197,7 @@ state_variable = class.new(nil, {
             parent - entity to register the SV for.
     ]]
     register = function(self, _name, parent)
-        logging.log(logging.DEBUG, "state_variable:register("
+        log(DEBUG, "state_variable:register("
              .. tostring(_name) .. ", "
              .. tostring(parent) .. ")")
 
@@ -235,8 +211,8 @@ state_variable = class.new(nil, {
         assert(self.getter)
         assert(self.setter)
 
-        logging.log(
-            logging.DEBUG,
+        log(
+            DEBUG,
             "state_variable:register: defining (g|s)etter for "
                 .. _name
         )
@@ -247,8 +223,8 @@ state_variable = class.new(nil, {
 
         -- if alt_name is available, setup as well.
         if self.alt_name then
-            logging.log(
-                logging.DEBUG,
+            log(
+                DEBUG,
                 "state_variable:register: defining (g|s)etter for "
                     .. self.alt_name
             )
@@ -288,8 +264,8 @@ state_variable = class.new(nil, {
     write_tests = function(self, entity)
         -- if deactivated, do extra logging and fail
         if entity.deactivated then
-            logging.log(
-                logging.ERROR,
+            log(
+                ERROR,
                 "Trying to write a field "
                     .. self._name
                     .. " of "
@@ -330,7 +306,7 @@ state_variable = class.new(nil, {
         -- read tests
         variable:read_tests(self)
 
-        logging.log(logging.INFO, "SV getter: " .. variable._name)
+        log(INFO, "SV getter: " .. variable._name)
 
         -- return the local value
         return self.state_variable_values[variable._name]
@@ -402,7 +378,7 @@ state_variable = class.new(nil, {
             value - the value to convert.
     ]]
     to_wire = function(self, value)
-        return convert.tostring(value)
+        return tostring(value)
     end,
 
     --[[!
@@ -415,7 +391,7 @@ state_variable = class.new(nil, {
             value - the value to convert.
     ]]
     from_wire = function(self, value)
-        return convert.tostring(value)
+        return tostring(value)
     end
 }, "state_variable")
 
@@ -429,11 +405,11 @@ state_variable = class.new(nil, {
 ]]
 state_integer = class.new(state_variable, {
     to_wire = function(self, value)
-        return convert.tostring(value)
+        return tostring(value)
     end,
 
     from_wire = function(self, value)
-        return convert.tointeger(value)
+        return tointeger(value)
     end
 }, "state_integer")
 
@@ -448,11 +424,11 @@ state_integer = class.new(state_variable, {
 ]]
 state_float = class.new(state_variable, {
     to_wire = function(self, value)
-        return convert.todec2str(value)
+        return todec2str(value)
     end,
 
     from_wire = function(self, value)
-        return convert.tonumber(value)
+        return tonumber(value)
     end
 }, "state_float")
 
@@ -466,31 +442,31 @@ state_float = class.new(state_variable, {
 ]]
 state_bool = class.new(state_variable, {
     to_wire = function(self, value)
-        return convert.tostring(value)
+        return tostring(value)
     end,
 
     from_wire = function(self, value)
-        return convert.toboolean(value)
+        return toboolean(value)
     end
 }, "state_bool")
 
 --[[!
-    Class: state_json
-    State JSON variable class. Overrides <state_variable.to_wire>,
+    Class: state_table
+    State table variable class. Overrides <state_variable.to_wire>,
     <state_variable.from_wire>.
 
-    to_wire performs JSON encoding of an object, returning a string.
-    from_wire decodes the string back to original object.
+    to_wire performs serialization of the table, returning a string.
+    from_wire deserializes the string back to original object.
 ]]
-state_json = class.new(state_variable, {
+state_table = class.new(state_variable, {
     to_wire = function(self, value)
-        return json.encode(value)
+        return table.serialize(value)
     end,
 
     from_wire = function(self, value)
-        return json.decode(value)
+        return table.deserialize(value)
     end
-}, "state_json")
+}, "state_table")
 
 --[[!
     Class: state_string
@@ -499,7 +475,7 @@ state_json = class.new(state_variable, {
     already work with strings. This is basically a nice alias
     for <state_variable>.
 ]]
-state_string = class.new(state_variable, "state_string")
+state_string = class.new(state_variable, nil, "state_string")
 
 --[[!
     Class: array_surrogate
@@ -542,8 +518,8 @@ array_surrogate = class.new(nil, {
             variable - the state variable the surrogate belongs to.
     ]]
     __init = function(self, entity, variable)
-        logging.log(
-            logging.INFO,
+        log(
+            INFO,
             "setting up array_surrogate("
                 .. tostring(entity)
                 .. ", "
@@ -598,16 +574,16 @@ array_surrogate = class.new(nil, {
     end,
 
     --[[!
-        Function: as_array
+        Function: to_array
         Returns raw array of values, which are stored inside
         the entity via state variable.
     ]]
-    as_array = function(self)
-        logging.log(logging.INFO, "as_array: " .. tostring(self))
+    to_array = function(self)
+        log(INFO, "to_array: " .. tostring(self))
 
         local r = {}
         for i = 1, self.length do
-            logging.log(logging.INFO, "as_array(" .. tostring(i) .. ")")
+            log(INFO, "to_array(" .. tostring(i) .. ")")
             table.insert(r, self[i])
         end
         return r
@@ -682,14 +658,14 @@ state_array = class.new(state_variable, {
         surrogate as value. That is sometimes handy.
     ]]
     setter = function(self, value, variable)
-        logging.log(
-            logging.DEBUG, "state_array setter: " .. json.encode(value)
+        log(
+            DEBUG, "state_array setter: " .. table.serialize(value)
         )
 
         -- we can also detect vectors :)
         if value.x then
-            logging.log(
-                logging.INFO,
+            log(
+                INFO,
                 "state_array setter: "
                     .. value.x
                     .. ", "
@@ -702,8 +678,8 @@ state_array = class.new(state_variable, {
         -- and arrays, try to print first 3 values
         -- we tostring the two ones because of nil values
         if value[1] then
-            logging.log(
-                logging.INFO,
+            log(
+                INFO,
                 "state_array setter: "
                     .. value[1]
                     .. ", "
@@ -716,9 +692,9 @@ state_array = class.new(state_variable, {
         -- pre-declare data
         local data
 
-        -- for surrogates, we have as_array
-        if value.as_array then
-            data = value:as_array()
+        -- for surrogates, we have to_array
+        if value.to_array then
+            data = value:to_array()
         else
             -- otherwise we get raw table, copy it
             data = table.copy(value)
@@ -734,7 +710,7 @@ state_array = class.new(state_variable, {
         Doesn't have self argument, accepts just one argument and that
         is the value. Returns an item in wire format.
     ]]
-    to_wire_item = convert.tostring,
+    to_wire_item = function(v) return tostring(v) end,
 
     --[[!
         Function: to_wire
@@ -753,13 +729,13 @@ state_array = class.new(state_variable, {
             value - either raw array or array surrogate to convert.
     ]]
     to_wire = function(self, value)
-        logging.log(
-            logging.INFO, "to_wire of state_array: " .. json.encode(value)
+        log(
+            INFO, "to_wire of state_array: " .. table.serialize(value)
         )
 
         -- if we have array surrogate, get a raw array
-        if value.as_array then
-            value = value:as_array()
+        if value.to_array then
+            value = value:to_array()
         end
 
         -- return right format, use <table.map> to map items to wire format.
@@ -777,7 +753,7 @@ state_array = class.new(state_variable, {
         Doesn't have self argument, accepts just one argument and that
         is the value. Returns an item in non-wire format.
     ]]
-    from_wire_item = convert.tostring,
+    from_wire_item = function(v) return tostring(v) end,
 
     --[[!
         Function: from_wire
@@ -792,8 +768,8 @@ state_array = class.new(state_variable, {
             value - the string value to get array from.
     ]]
     from_wire = function(self, value)
-        logging.log(
-            logging.DEBUG,
+        log(
+            DEBUG,
             "from_wire of state_array: "
                 .. tostring(self._name)
                 .. "::"
@@ -823,8 +799,8 @@ state_array = class.new(state_variable, {
             entity - the entity to get raw data from.
     ]]
     get_raw = function(self, entity)
-        logging.log(logging.INFO, "get_raw: " .. tostring(self))
-        logging.log(logging.INFO, json.encode(entity.state_variable_values))
+        log(INFO, "get_raw: " .. tostring(self))
+        log(INFO, table.serialize(entity.state_variable_values))
 
         local val = entity.state_variable_values[self._name]
         return val and val or {}
@@ -843,15 +819,15 @@ state_array = class.new(state_variable, {
             value - the value to set.
     ]]
     set_item = function(self, entity, index, value)
-        logging.log(
-            logging.INFO,
-            "set_item: " .. index .. " : " .. json.encode(value)
+        log(
+            INFO,
+            "set_item: " .. index .. " : " .. table.serialize(value)
         )
 
         -- get raw array
         local arr = self:get_raw(entity)
 
-        logging.log(logging.INFO, "got_raw: " .. json.encode(arr))
+        log(INFO, "got_raw: " .. table.serialize(arr))
 
         -- do not allow separator to be present in the item if it's
         -- string, it could mess up the whole system.
@@ -876,14 +852,14 @@ state_array = class.new(state_variable, {
             index - state array index.
     ]]
     get_item = function(self, entity, index)
-        logging.log(logging.INFO, "state_array:get_item for " .. index)
+        log(INFO, "state_array:get_item for " .. index)
 
         -- raw array
         local arr = self:get_raw(entity)
-        logging.log(
-            logging.INFO,
+        log(
+            INFO,
             "state_array:get_item "
-                .. json.encode(arr)
+                .. table.serialize(arr)
                 .. " ==> "
                 .. arr[index]
         )
@@ -920,8 +896,8 @@ state_array = class.new(state_variable, {
     and <state_array.from_wire_item>.
 ]]
 state_array_float = class.new(state_array, {
-    to_wire_item = convert.todec2str,
-    from_wire_item = convert.tonumber
+    to_wire_item = todec2str,
+    from_wire_item = function(v) return tonumber(v) end
 }, "state_array_float")
 
 --[[!
@@ -931,8 +907,8 @@ state_array_float = class.new(state_array, {
     <state_array.from_wire_item>.
 ]]
 state_array_integer = class.new(state_array, {
-    to_wire_item = convert.tostring,
-    from_wire_item = convert.tointeger
+    to_wire_item = function(v) return tostring(v) end,
+    from_wire_item = function(v) return tointeger(v) end
 
 }, "state_array_integer")
 
@@ -968,8 +944,8 @@ variable_alias = class.new(state_variable, {
         plus alias name, and creates a getter / setter for alias name.
     ]]
     register = function(self, _name, parent)
-        logging.log(
-            logging.DEBUG,
+        log(
+            DEBUG,
             "variable_alias:register(%(1)q, %(2)s)"
                 % { _name, tostring(parent) }
         )
@@ -977,8 +953,8 @@ variable_alias = class.new(state_variable, {
         -- set _name
         self._name = _name
 
-        logging.log(
-            logging.DEBUG,
+        log(
+            DEBUG,
             "Getting target entity for variable alias "
                 .. _name
                 .. ": "
@@ -1024,7 +1000,7 @@ wrapped_c_variable = {
         Then, parent constructor gets called as usual.
     ]]
     __init = function(self, kwargs)
-        logging.log(logging.INFO, "wrapped_c_variable:__init()")
+        log(INFO, "wrapped_c_variable:__init()")
 
         -- read kwargs
         self.c_getter_raw = kwargs.c_getter
@@ -1034,7 +1010,7 @@ wrapped_c_variable = {
         kwargs.c_setter = nil
 
         -- and call parent with the kwargs
-        self.__base.__init(self, kwargs)
+        self.base_class.__init(self, kwargs)
     end,
 
     --[[!
@@ -1060,9 +1036,9 @@ wrapped_c_variable = {
     ]]
     register = function(self, _name, parent)
         -- call parent
-        self.__base.register(self, _name, parent)
+        self.base_class.register(self, _name, parent)
 
-        logging.log(logging.DEBUG, "WCV register: " .. tostring(_name))
+        log(DEBUG, "WCV register: " .. tostring(_name))
 
         -- allow use of string names, for late binding at
         -- this stage we copy raw walues, then eval
@@ -1082,11 +1058,11 @@ wrapped_c_variable = {
             -- prepare a renamed instance of state variable
             local variable = self
             -- connect the handler
-            parent:connect(get_on_modify_name(_name), function (self, value)
+            signal.connect(parent,get_on_modify_name(_name), function (self, value)
                 -- on client or with empty SV change queue, call the setter
                 if CLIENT or parent:can_call_c_functions() then
-                    logging.log(
-                        logging.INFO,
+                    log(
+                        INFO,
                         string.format(
                             "Calling c_setter for %s, with %s (%s)",
                             variable._name, tostring(value), type(value)
@@ -1094,12 +1070,12 @@ wrapped_c_variable = {
                     )
                     -- we've been set up, apply the change
                     variable.c_setter(parent, value)
-                    logging.log(logging.INFO, "c_setter called successfully.")
+                    log(INFO, "c_setter called successfully.")
 
                     -- cache the value locally for performance reasons
                     parent.state_variable_values[variable._name] = value
                     parent.state_variable_value_timestamps[variable._name]
-                        = GLOBAL_CURRENT_TIMESTAMP
+                        = frame.get_frame()
                 else
                     -- not yet set up, queue change
                     parent:queue_state_variable_change(variable._name, value)
@@ -1107,8 +1083,8 @@ wrapped_c_variable = {
             end)
         else
             -- valid behavior, but log it anyway
-            logging.log(
-                logging.DEBUG,
+            log(
+                DEBUG,
                 "No c_setter for " .. _name .. ": not connecting to signal."
             )
         end
@@ -1135,18 +1111,18 @@ wrapped_c_variable = {
         -- read tests
         variable:read_tests(self)
 
-        logging.log(logging.INFO, "WCV getter " .. variable._name)
+        log(INFO, "WCV getter " .. variable._name)
 
         -- caching - return from cache if timestamp is okay
         local cached_timestamp
             = self.state_variable_value_timestamps[variable._name]
-        if cached_timestamp == GLOBAL_CURRENT_TIMESTAMP then
+        if cached_timestamp == frame.get_frame() then
             return self.state_variable_values[variable._name]
         end
 
         -- if it needs updated value, do checks
         if variable.c_getter and (CLIENT or self:can_call_c_functions()) then
-            logging.log(logging.INFO, "WCV getter: call C")
+            log(INFO, "WCV getter: call C")
             -- call C now
             local val = variable.c_getter(self)
 
@@ -1154,19 +1130,19 @@ wrapped_c_variable = {
             if CLIENT or self._queued_sv_changes_complete then
                 self.state_variable_values[variable._name] = val
                 self.state_variable_value_timestamps[variable._name]
-                    = GLOBAL_CURRENT_TIMESTAMP
+                    = frame.get_frame()
             end
 
             -- return the value
             return val
         else
             -- call standard getter if no C getter available
-            logging.log(
-                logging.INFO,
+            log(
+                INFO,
                 "WCV getter: fallback to state_data since "
                     .. tostring(variable.c_getter)
             )
-            return variable.__base.getter(self, variable)
+            return variable.base_class.getter(self, variable)
         end
     end
 }
@@ -1214,7 +1190,7 @@ wrapped_c_string = class.new(
     <wrapped_c_variable.getter>. Overrides <state_array.get_raw>
     so it makes use of C getters.
 ]]
-wrapped_c_array = class.new(state_array, "wrapped_c_array"):mixin({
+wrapped_c_array = class.new(state_array, nil, "wrapped_c_array"):mixin({
     __init   = wrapped_c_variable.__init,
     register = wrapped_c_variable.register,
 
@@ -1233,8 +1209,8 @@ wrapped_c_array = class.new(state_array, "wrapped_c_array"):mixin({
         to local state data.
     ]]
     get_raw = function(self, entity)
-        logging.log(
-            logging.INFO,
+        log(
+            INFO,
             "WCA:get_raw " .. self._name .. " " .. tostring(self.c_getter)
         )
 
@@ -1243,31 +1219,31 @@ wrapped_c_array = class.new(state_array, "wrapped_c_array"):mixin({
             -- try getting the value from cache first, check timestamp
             local cached_timestamp
                 = entity.state_variable_value_timestamps[self._name]
-            if cached_timestamp == GLOBAL_CURRENT_TIMESTAMP then
+            if cached_timestamp == frame.get_frame() then
                 return entity.state_variable_values[self._name]
             end
 
-            logging.log(logging.INFO, "WCA:get_raw: call C")
+            log(INFO, "WCA:get_raw: call C")
             -- call C if we can't.
             local val = self.c_getter(entity)
-            logging.log(
-                logging.INFO, "WCA:get_raw:result: " .. json.encode(val)
+            log(
+                INFO, "WCA:get_raw:result: " .. table.serialize(val)
             )
 
             -- cache the value so we're up to date for next time
             if CLIENT or entity._queued_sv_changes_complete then
                 entity.state_variable_values[self._name] = val
                 entity.state_variable_value_timestamps[self._name]
-                    = GLOBAL_CURRENT_TIMESTAMP
+                    = frame.get_frame()
             end
 
             -- return the value
             return val
         else
             -- fallback to state data
-            logging.log(logging.INFO, "WCA:get_raw: fallback to state_data")
+            log(INFO, "WCA:get_raw: fallback to state_data")
             local r = entity.state_variable_values[self._name]
-            logging.log(logging.INFO, "WCA:get_raw .. " .. json.encode(r))
+            log(INFO, "WCA:get_raw .. " .. table.serialize(r))
             return r
         end
     end
@@ -1282,7 +1258,7 @@ wrapped_c_array = class.new(state_array, "wrapped_c_array"):mixin({
     with its own methods.
 ]]
 vec3_surrogate = class.new(
-    array_surrogate, math.vec3, "vec3_surrogate"
+    array_surrogate, math.Vec3, "vec3_surrogate"
 ):mixin({
     --[[!
         Constructor: __init
@@ -1389,13 +1365,13 @@ wrapped_c_vec3 = class.new(state_vec3, {
 --[[!
     Class: vec4_surrogate
     Inherited from <array_surrogate>. It's basically array surrogate
-    modified to fit better with <math.vec4>. It takes <array_surrogate>,
-    mixes in <math.vec4> so it has all vector operation methods and
+    modified to fit better with <math.Vec4>. It takes <array_surrogate>,
+    mixes in <math.Vec4> so it has all vector operation methods and
     overrides <array_surrogate.__init> and <array_surrogate.push>
     with its own methods.
 ]]
 vec4_surrogate = class.new(
-    array_surrogate, math.vec4, "vec4_surrogate"
+    array_surrogate, math.Vec4, "vec4_surrogate"
 ):mixin({
     --[[!
         Constructor: __init

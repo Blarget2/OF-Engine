@@ -98,6 +98,9 @@ bool setfont(const char *name)
     font *f = fonts.access(name);
     if(!f) return false;
     curfont = f;
+    extern int fontw, fonth;
+    fontw = FONTW;
+    fonth = FONTH;
     return true;
 }
 
@@ -112,6 +115,9 @@ bool popfont()
 {
     if(fontstack.empty()) return false;
     curfont = fontstack.pop();
+    extern int fontw, fonth;
+    fontw = FONTW;
+    fonth = FONTH;
     return true;
 }
 
@@ -230,10 +236,10 @@ static void text_color(char c, char *stack, int size, int &sp, bvec color, int a
                     if(i-j > 16) break;\
                     if(!curfont->chars.inrange(c-curfont->charoffset)) break;\
                     float cw = scale*curfont->chars[c-curfont->charoffset].advance;\
-                    if(cw <= 0 || w + cw >= maxwidth) break;\
+                    if(cw <= 0 || w + cw > maxwidth) break;\
                     w += cw;\
                 }\
-                if(x + w >= maxwidth && j!=0) { TEXTLINE(j-1) x = 0; y += FONTH; }\
+                if(x + w > maxwidth && j!=0) { TEXTLINE(j-1) x = 0; y += FONTH; }\
                 TEXTWORD\
             }\
             else\

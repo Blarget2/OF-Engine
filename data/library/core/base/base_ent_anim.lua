@@ -60,7 +60,7 @@ base_animated = class.new(entity.base, {
 
         self.model_name  = ""
         self.attachments = {}
-        self.animation   = math.bor(actions.ANIM_IDLE, actions.ANIM_LOOP)
+        self.animation   = math.bor(model.ANIM_IDLE, model.ANIM_LOOP)
     end,
 
     --! Function: activate
@@ -69,14 +69,14 @@ base_animated = class.new(entity.base, {
     --! Note: Queues model_name property for updating.
     activate = function(self, kwargs)
         -- call parent
-        logging.log(logging.DEBUG, "base:activate")
+        log(DEBUG, "base:activate")
         entity.base.activate(self, kwargs)
 
         -- queue model_name for updating
-        logging.log(logging.DEBUG, "base:activate (2)")
+        log(DEBUG, "base:activate (2)")
         self.model_name = self.model_name
 
-        logging.log(logging.DEBUG, "base:activate complete")
+        log(DEBUG, "base:activate complete")
     end,
 
     --[[!
@@ -162,22 +162,22 @@ base_animated = class.new(entity.base, {
     on finish. Useful for inheriting (some actions in <firing> and <health>
     do that). Inherits from <action>.
 ]]
-action_local_animation = class.new(actions.action, {
+action_local_animation = table.subclass(actions.Action, {
     --[[!
-        Function: do_start
-        See <action.do_start>. This overriden method saves
+        Function: start
+        See <action.start>. This overriden method saves
         actor's old animation, gives actor its own animation and ends.
     ]]
-    do_start = function(self)
+    start = function(self)
         self.old_animation = self.actor.animation
         self.actor:set_local_animation(self.local_animation)
     end,
 
     --[[!
-        Function: do_finish
-        See <action.do_finish>. This just restores actor's animation from saved.
+        Function: finish
+        See <action.finish>. This just restores actor's animation from saved.
     ]]
-    do_finish = function(self)
+    finish = function(self)
         if self.actor.animation == self.local_animation then
             self.actor:set_local_animation(self.old_animation)
         end

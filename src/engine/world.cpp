@@ -28,7 +28,7 @@ bool getentboundingbox(extentity &e, ivec &o, ivec &r)
             if(m)
             {
                 vec center, radius;
-                m->boundbox(0, center, radius, entity); // INTENSITY: entity
+                m->boundbox(center, radius, entity); // INTENSITY: entity
                 rotatebb(center, radius, e.attr1);
                 o = e.o;
                 o.add(center);
@@ -174,7 +174,6 @@ static bool modifyoctaent(int flags, int id)
     e.inoctanode = flags&MODOE_ADD ? 1 : 0;
     if(e.type == ET_LIGHT) clearlightcache(id);
     else if(e.type == ET_PARTICLES) clearparticleemitters();
-    else if(flags&MODOE_ADD) lightent(e);
     return true;
 }
 
@@ -390,6 +389,7 @@ void attachentities()
     f; \
     if(oldtype!=ent.type) detachentity(ent); \
     if(ent.type!=ET_EMPTY) { addentity(n); if(oldtype!=ent.type) attachentity(ent); }) \
+    clearshadowcache(); \
 }
 #define addgroup(exp)   { loopv(entities::storage) entfocus(i, if(exp) entadd(n)); }
 #define setgroup(exp)   { entcancel(); addgroup(exp); }
@@ -455,7 +455,7 @@ void entselectionbox(const entity &e, vec &eo, vec &es)
     model *m = NULL;
     if(e.type == ET_MAPMODEL && (m = entity->getModel())) // INTENSITY
     {
-        m->collisionbox(0, eo, es, entity); // INTENSITY
+        m->collisionbox(eo, es, entity); // INTENSITY
         rotatebb(eo, es, e.attr1);
         eo.add(e.o);
     }   
@@ -512,11 +512,12 @@ void renderentring(const extentity &e, float radius, int axis)
 {
     if(radius <= 0) return;
     glBegin(GL_LINE_LOOP);
-    loopi(16)
+    loopi(15)
     {
         vec p(e.o);
-        p[axis>=2 ? 1 : 0] += radius*cosf(2*M_PI*i/16.0f);
-        p[axis>=1 ? 2 : 1] += radius*sinf(2*M_PI*i/16.0f);
+        const vec2 &sc = sincos360[i*(360/15)];
+        p[axis>=2 ? 1 : 0] += radius*sc.x;
+        p[axis>=1 ? 2 : 1] += radius*sc.y;
         glVertex3fv(p.v);
     }
     glEnd();
@@ -605,7 +606,7 @@ void renderentradius(extentity &e, bool color)
                 float radius = e.attached->attr1;
                 if(!radius) radius = 2*e.o.dist(e.attached->o);
                 vec dir = vec(e.o).sub(e.attached->o).normalize();
-                float angle = max(1, min(90, int(e.attr1)));
+                float angle = clamp(int(e.attr1), 1, 89);
                 renderentattachment(e);
                 renderentcone(*e.attached, dir, radius, angle); 
             }
@@ -618,7 +619,7 @@ void renderentradius(extentity &e, bool color)
 
         case ET_ENVMAP:
         {
-            extern int& envmapradius;
+            extern int envmapradius;
             if(color) glColor3f(0, 1, 1);
             renderentsphere(e, e.attr1 ? max(0, min(10000, int(e.attr1))) : envmapradius);
             break;
@@ -667,7 +668,7 @@ void renderentselection(const vec &o, const vec &ray, bool entmoving)
         glLineWidth(1);
     }
 
-    extern int& showentradius;
+    extern int showentradius;
     if(showentradius && (entgroup.length() || enthover >= 0))
     {
         glDepthFunc(GL_GREATER);
@@ -740,7 +741,7 @@ void entautoview(int dir)
     vec v(player->o);
     v.sub(worldpos);
     v.normalize();
-    extern int& entautoviewdist;
+    extern int entautoviewdist;
     v.mul(entautoviewdist);
     int t = s + dir;
     s = abs(t) % entgroup.length();
@@ -775,7 +776,7 @@ VAR(entdrop, 0, 2, 3);
 
 bool dropentity(entity &e, int drop = -1)
 {
-    extern int& entdrop;
+    extern int entdrop;
     vec radius(4.0f, 4.0f, 4.0f);
     if(drop<0) drop = entdrop;
     if(e.type == ET_MAPMODEL)
@@ -786,7 +787,7 @@ bool dropentity(entity &e, int drop = -1)
         if(m)
         {
             vec center;
-            m->boundbox(0, center, radius, entity); // INTENSITY: entity
+            m->boundbox(center, radius, entity); // INTENSITY: entity
             rotatebb(center, radius, e.attr1);
             radius.x += fabs(center.x);
             radius.y += fabs(center.y);
@@ -835,8 +836,15 @@ void attachent()
     groupedit(attachentity(ent));
 }
 
-extentity *newentity(bool local, const vec &o, int type, int v1, int v2, int v3, int v4, int v5)
+extentity *newentity(bool local, const vec &o, int type, int v1, int v2, int v3, int v4, int v5, int &idx)
 {
+    if(local)
+    {
+        idx = -1;
+        loopv(entities::storage) if(entities::storage[i]->type == ET_EMPTY) { idx = i; break; }
+        if(idx < 0 && entities::storage.length() >= MAXENTS) { conoutf("too many entities"); return NULL; }
+    }
+    else while(entities::storage.length() < idx) entities::storage.add(new extentity)->type = ET_EMPTY;
     extentity &e = *(new extentity);
     e.o = o;
     e.attr1 = v1;
@@ -848,8 +856,6 @@ extentity *newentity(bool local, const vec &o, int type, int v1, int v2, int v3,
     e.reserved = 0;
     e.spawned = false;
     e.inoctanode = false;
-    e.light.color = vec(1, 1, 1);
-    e.light.dir = vec(0, 0, 1);
     if(local)
     {
         switch(type)
@@ -864,20 +870,21 @@ extentity *newentity(bool local, const vec &o, int type, int v1, int v2, int v3,
                     break;
         }
     }
+    if(entities::storage.inrange(idx)) entities::storage[idx] = &e;
+    else { idx = entities::storage.length(); entities::storage.add(&e); }
     return &e;
 }
 
 void newentity(int type, int a1, int a2, int a3, int a4, int a5)
 {
-    if(entities::storage.length() >= MAXENTS) { conoutf("too many entities"); return; }
-    extentity *t = newentity(true, player->o, type, a1, a2, a3, a4, a5);
+    int idx;
+    extentity *t = newentity(true, player->o, type, a1, a2, a3, a4, a5, idx);
+    if(!t) return;
     dropentity(*t);
-    entities::storage.add(t);
-    int i = entities::storage.length()-1;
     t->type = ET_EMPTY;
-    enttoggle(i);
+    enttoggle(idx);
     makeundoent();
-    entedit(i, ent.type = type);
+    entedit(idx, ent.type = type);
 }
 
 int entcopygrid;
@@ -907,18 +914,22 @@ void entpaste()
 
         // INTENSITY: Create entity using new system
         CLogicEntity *entity = LogicSystem::getLogicEntity(c);
+        if (!entity) return;
+
         const char *_class = entity->getClass();
 
-        lapi::state["__ccentcopy__TEMP"] = entity->lua_ref.get<lua::Function>(
-            "create_state_data_dict"
+        lapi::state["__ccentcopy__TEMP"] = lapi::state.get<lua::Function>(
+            "LAPI", "World", "Entity", "create_state_data_dict"
         ).call<lua::Object>(entity->lua_ref);
 
         lapi::state.get<lua::Table>(
-            "__centcopy__TEMP"
-        )["position"] = types::String().format("[%f|%f|%f]", o.x, o.y, o.z);
+            "__ccentcopy__TEMP"
+        )[lapi::state.get<lua::Object>(
+            "LAPI", "World", "Entity", "Properties", "position"
+        )] = types::String().format("[%f|%f|%f]", o.x, o.y, o.z);
 
         const char *sd = lapi::state.get<lua::Function>(
-            "json", "encode"
+            "LAPI", "Table", "serialize"
         ).call<const char*>(lapi::state["__ccentcopy__TEMP"]);
         if (!sd) sd = "{}";
 
@@ -937,12 +948,13 @@ void entset(char *what, int a1, int a2, int a3, int a4, int a5)
 {
     if(noentedit()) return;
     int type = findtype(what);
-    groupedit(ent.type=type;
-              ent.attr1=a1;
-              ent.attr2=a2;
-              ent.attr3=a3;
-              ent.attr4=a4;
-              ent.attr5=a5);
+    if(type != ET_EMPTY)
+        groupedit(ent.type=type;
+                  ent.attr1=a1;
+                  ent.attr2=a2;
+                  ent.attr3=a3;
+                  ent.attr4=a4;
+                  ent.attr5=a5);
 }
 
 void printent(extentity &e, char *buf)
@@ -989,16 +1001,18 @@ void intensityentcopy() // INTENSITY
     CLogicEntity *entity = LogicSystem::getLogicEntity(e);
     intensityCopiedClass = entity->getClass();
 
-    lapi::state["__ccentcopy__TEMP"] = entity->lua_ref.get<lua::Function>(
-        "create_state_data_dict"
+    lapi::state["__ccentcopy__TEMP"] = lapi::state.get<lua::Function>(
+        "LAPI", "World", "Entity", "create_state_data_dict"
     ).call<lua::Object>(entity->lua_ref);
 
     lapi::state.get<lua::Table>(
         "__ccentcopy__TEMP"
-    )["position"] = lua::nil;
+    )[lapi::state.get<lua::Object>(
+        "LAPI", "World", "Entity", "Properties", "position"
+    )] = lua::nil;
 
     intensityCopiedStateData = lapi::state.get<lua::Function>(
-        "json", "encode"
+        "LAPI", "Table", "serialize"
     ).call<const char*>(lapi::state["__ccentcopy__TEMP"]);
     if (!intensityCopiedStateData) intensityCopiedStateData = "{}";
 
@@ -1077,11 +1091,10 @@ void splitocta(cube *c, int size)
 
 void resetmap()
 {
-    var::clear();
+    varsys::clear();
     clearmapsounds();
-    cleanreflections();
     resetblendmap();
-    resetlightmaps();
+    clearlights();
     clearpvs();
     clearslots();
     clearparticles();
@@ -1126,9 +1139,9 @@ bool emptymap(int scale, bool force, const char *mname, bool usecfg)    // main 
 
     if (usecfg)
     {
-        var::overridevars = true;
+        varsys::overridevars = true;
         lapi::state.do_file("data/cfg/default_map_settings.lua");
-        var::overridevars = false;
+        varsys::overridevars = false;
     }
 
     clearlights();
@@ -1175,7 +1188,7 @@ static bool isallempty(cube &c)
 
 void shrinkmap()
 {
-    extern int& nompedit;
+    extern int nompedit;
     if(noedit(true) || (nompedit && multiplayer())) return;
     if(worldsize <= 1<<10) return;
 
@@ -1215,9 +1228,7 @@ void mpeditent(int i, const vec &o, int type, int attr1, int attr2, int attr3, i
     if(i < 0 || i >= MAXENTS) return;
     if(entities::storage.length()<=i)
     {
-        while(entities::storage.length()<i) entities::storage.add(new extentity)->type = ET_EMPTY;
-        extentity *e = newentity(local, o, type, attr1, attr2, attr3, attr4, attr5);
-        entities::storage.add(e);
+        extentity *e = newentity(local, o, type, attr1, attr2, attr3, attr4, attr5, i);
         addentity(i);
         attachentity(*e);
     }
@@ -1233,6 +1244,7 @@ void mpeditent(int i, const vec &o, int type, int attr1, int attr2, int attr3, i
         addentity(i);
         if(oldtype!=type) attachentity(e);
     }
+    clearshadowcache();
 }
 
 int getworldsize() { return worldsize; }

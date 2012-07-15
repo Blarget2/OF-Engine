@@ -36,23 +36,23 @@ world_notice = entity_classes.register(plugins.bake(entity_static.area_trigger, 
             self:queue_action(self.notice_action)
         end
 
-        self.colliding_time = GLOBAL_TIME
+        self.colliding_time = frame.get_time()
     end
 }}, "world_notice"), "mapmodel")
 
-notice_action = class.new(actions.action, {
+notice_action = table.subclass(actions.Action, {
     can_multiply_queue = false,
 
     should_continue = function(self)
         return false
     end,
 
-    do_start = function(self)
+    start = function(self)
         self.current_time = 0
         self.current_size_ratio = 0
     end,
 
-    do_execute = function(self, seconds)
+    run = function(self, seconds)
         local current_size
 
         if self:should_continue() then
@@ -79,9 +79,9 @@ notice_action = class.new(actions.action, {
     end
 })
 
-world_notice_action = class.new(notice_action, {
-    do_start = function(self)
-        notice_action.do_start(self)
+world_notice_action = table.subclass(notice_action, {
+    start = function(self)
+        notice_action.start(self)
 
         self.text  = self.actor.text
         self.color = self.actor.color
@@ -92,11 +92,11 @@ world_notice_action = class.new(notice_action, {
     end,
 
     should_continue = function(self)
-        return ((GLOBAL_TIME - self.actor.colliding_time) <= 0.5)
+        return ((frame.get_time() - self.actor.colliding_time) <= 0.5)
     end,
 
-    do_finish = function(self)
-        actions.action.do_finish(self)
+    finish = function(self)
+        actions.Action.finish(self)
         self.actor.notice_action = nil
     end
 })

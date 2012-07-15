@@ -6,12 +6,11 @@
 #include "game.h"
 #include "crypto.h"
 
-#include "intensity.h"
 #include "client_system.h"
 
 namespace game
 {      
-    void rendergame(bool mainpass)
+    void rendergame()
     {
         if (!ClientSystem::loggedIn) // If not logged in remotely, do not render, because entities lack all the fields like model_name
                                      // in the future, perhaps add these, if we want local rendering
@@ -20,10 +19,7 @@ namespace game
             return;
         }
 
-        startmodelbatches();
-
-        lapi::state.get<lua::Function>("entity_store", "render_dynamic")(isthirdperson());
-        endmodelbatches();
+        lapi::state.get<lua::Function>("LAPI", "World", "Entities", "render")(isthirdperson());
     }
 
     int swaymillis = 0;
@@ -45,7 +41,7 @@ namespace game
 
     void renderavatar()
     {
-        lapi::state.get<lua::Function>("entity_store", "render_hud_model")();
+        lapi::state.get<lua::Function>("LAPI", "World", "render_hud")();
     }
 }
 

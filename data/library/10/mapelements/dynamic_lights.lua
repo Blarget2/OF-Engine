@@ -1,7 +1,6 @@
 module("dynamic_lights", package.seeall)
 
 dynamic_light = entity_classes.register(plugins.bake(entity_static.world_marker, {{
-    should_act = { client = true },
     properties = {
         attr1 = state_variables.state_integer({ gui_name = "radius", alt_name = "radius" }),
         attr2 = state_variables.state_integer({ gui_name = "red",    alt_name = "red"    }),
@@ -14,6 +13,10 @@ dynamic_light = entity_classes.register(plugins.bake(entity_static.world_marker,
         blue   = state_variables.variable_alias("attr4")
     },
 
+    should_act = true,
+
+    act = function(self, seconds) end,
+
     init = function(self)
         self.radius = 100
         self.red    = 128
@@ -24,11 +27,11 @@ dynamic_light = entity_classes.register(plugins.bake(entity_static.world_marker,
     dynamic_light_show = function(self, seconds)
         CAPI.adddynlight(
             self.position, self.radius,
-            math.vec3(
+            math.Vec3(
                 self.red / 255, self.green / 255, self.blue / 255
             ),
             0, 0, 0, 0,
-            math.vec3(0, 0, 0)
+            math.Vec3(0, 0, 0)
         )
     end,
 
@@ -61,11 +64,11 @@ entity_classes.register(plugins.bake(dynamic_light, {{
             if math.random() < self.probability then
                 CAPI.adddynlight(
                     self.position, self.radius,
-                    math.vec3(
+                    math.Vec3(
                         self.red / 255, self.green / 255, self.blue / 255
                     ),
                     self.delay * 1000, 0, math.lsh(1, 2), 0,
-                    math.vec3(0, 0, 0)
+                    math.Vec3(0, 0, 0)
                 )
             end
         end

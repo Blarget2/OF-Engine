@@ -16,8 +16,6 @@
 
         It loads:
         - Library system
-        - JSON parser
-        - Signals system
         - Engine interface
         - Utility library
         - Geometry library
@@ -43,128 +41,67 @@
 -- see world metatable below
 local gravity
 
-logging.log(logging.DEBUG, ":: Library system.")
-require("base.base_library")
-
-logging.log(logging.DEBUG, ":: JSON.")
-require("base.base_json")
-
-logging.log(logging.DEBUG, ":: Signals.")
-require("base.base_signals")
-
-logging.log(logging.DEBUG, ":: Engine interface.")
+log(DEBUG, ":: Engine interface.")
 require("base.base_engine")
 
-
---[[!
-    Class: _G
-    Overriden metamethods for transparently getting / setting
-    engine variables. If engine variable exists, it's returned,
-    otherwise normal variable is returned. Same applies for
-    setting.
-]]
-setmetatable(_G, {
-    --[[!
-        Function: __index
-        This is overriden metamethod for getting.
-        It returns engine variable if it exists,
-        normal variable otherwise.
-
-        Parameters:
-            self - the table
-            n - name of the variable we're getting
-
-        Returns:
-            either engine variable or normal variable.
-    ]]
-    __index = function(self, n)
-        return (engine.var_exists(n) and
-            engine.get_var(n) or
-            rawget(self, n)
-        )
-    end,
-
-    --[[!
-        Function: __newindex
-        This is overriden metamethod for setting.
-        It sets engine variable if it exists or normal
-        one otherwise.
-
-        Parameters:
-            self - the table
-            n - name of the variable we're setting
-            v - value we're setting
-    ]]
-    __newindex = function(self, n, v)
-        if engine.var_exists(n) then
-            engine.set_var(n, v)
-        else
-            rawset(self, n, v)
-        end
-    end
-})
-
-logging.log(logging.DEBUG, ":: Geometry interface.")
+log(DEBUG, ":: Geometry interface.")
 require("base.base_geometry")
 
-logging.log(logging.DEBUG, ":: Action system.")
-require("base.base_actions")
-
-logging.log(logging.DEBUG, ":: Input.")
+log(DEBUG, ":: Input.")
 require("base.base_input")
 
-logging.log(logging.DEBUG, ":: Console.")
+log(DEBUG, ":: Console.")
 require("base.base_console")
 
-logging.log(logging.DEBUG, ":: GUI.")
+log(DEBUG, ":: GUI.")
 require("base.base_gui")
 
-logging.log(logging.DEBUG, ":: Shaders.")
+log(DEBUG, ":: Shaders.")
 require("base.base_shaders")
 
-logging.log(logging.DEBUG, ":: Models.")
+log(DEBUG, ":: Models.")
 require("base.base_models")
 
-logging.log(logging.DEBUG, ":: Message system.")
+log(DEBUG, ":: Message system.")
 require("base.base_messages")
 
-logging.log(logging.DEBUG, ":: Logic entity storage.")
+log(DEBUG, ":: Logic entity storage.")
 require("base.base_ent_store")
 
-logging.log(logging.DEBUG, ":: State variables.")
+log(DEBUG, ":: State variables.")
 require("base.base_svars")
 
-logging.log(logging.DEBUG, ":: Logic entity classes.")
+log(DEBUG, ":: Logic entity classes.")
 require("base.base_ent_classes")
 
-logging.log(logging.DEBUG, ":: Logic entities.")
+log(DEBUG, ":: Logic entities.")
 require("base.base_ent")
 
-logging.log(logging.DEBUG, ":: Effects.")
+log(DEBUG, ":: Effects.")
 require("base.base_effects")
 
-logging.log(logging.DEBUG, ":: Sound.")
+log(DEBUG, ":: Sound.")
 require("base.base_sound")
 
-logging.log(logging.DEBUG, ":: Animatables.")
+log(DEBUG, ":: Animatables.")
 require("base.base_ent_anim")
 
-logging.log(logging.DEBUG, ":: Character.")
+log(DEBUG, ":: Character.")
 require("base.base_character")
 
-logging.log(logging.DEBUG, ":: Static entities.")
+log(DEBUG, ":: Static entities.")
 require("base.base_ent_static")
 
-logging.log(logging.DEBUG, ":: Textures.")
+log(DEBUG, ":: Textures.")
 require("base.base_textures")
 
-logging.log(logging.DEBUG, ":: VSlots.")
+log(DEBUG, ":: VSlots.")
 require("base.base_vslots")
 
-logging.log(logging.DEBUG, ":: Editing.")
+log(DEBUG, ":: Editing.")
 require("base.base_editing")
 
-logging.log(logging.DEBUG, ":: World interface.")
+log(DEBUG, ":: World interface.")
 require("base.base_world")
 
 --[[!
@@ -211,5 +148,5 @@ setmetatable(world, {
 
 world.gravity = 200
 
-logging.log(logging.DEBUG, ":: Camera.")
+log(DEBUG, ":: Camera.")
 require("base.base_camera")

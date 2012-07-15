@@ -22,6 +22,11 @@ namespace lapi_binds
         return isconnected(attempt);
     }
 
+    bool _lua_haslocalclients()
+    {
+        return haslocalclients();
+    }
+
     types::String _lua_connectedip()
     {
         const ENetAddress *addr = connectedpeer();
@@ -78,7 +83,7 @@ namespace lapi_binds
         auto err = lapi::state.load_file(fname);
         if (types::get<0>(err))
         {
-            lapi::state.get<lua::Function>("gui", "message")(
+            lapi::state.get<lua::Function>("LAPI", "GUI", "show_message")(
                 "Compilation failed", types::get<1>(err)
             );
             return;
@@ -88,7 +93,7 @@ namespace lapi_binds
         save_world(game::getclientmap().get_buf());
 
         renderprogress(0.4, "exporting entities ..");
-        world::export_ents("entities.json");
+        world::export_ents("entities.lua");
     }
 
     void _lua_restart_map()
@@ -104,6 +109,7 @@ namespace lapi_binds
     {
         LAPI_REG(connect);
         LAPI_REG(isconnected);
+        LAPI_REG(haslocalclients);
         LAPI_REG(connectedip);
         LAPI_REG(connectedport);
         LAPI_REG(connectserv);

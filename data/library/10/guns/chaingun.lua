@@ -2,7 +2,7 @@ library.include("firing")
 
 module("chaingun", package.seeall)
 
-chaingun = class.new(firing.gun, {
+chaingun = table.subclass(firing.gun, {
     repeating     = true,
     delay         = 100, -- unused
     origin_tag    = "tag_weapon",
@@ -54,7 +54,7 @@ chaingun = class.new(firing.gun, {
             effects.flare(
                 effects.PARTICLE.STREAK,
                 visual_origin, target:sub_new(
-                    math.vec3_normalized():mul(1.5)
+                    math.norm_vec3():mul(1.5)
                 ), self.firing_rate * 1.5, 0xE49B4B
             )
         end
@@ -96,7 +96,7 @@ chaingun.plugin = {
     client_activate = function(self)
         self.chaingun_firing = false
 
-        self:connect(
+        signal.connect(self,
             state_variables.get_on_modify_name("chaingun_firing_update"),
             function(self, value)
                 value = value and health.is_valid_target(self)
@@ -148,7 +148,7 @@ chaingun.plugin = {
                 if    gun:is_a(chaingun) then
                     firing.guns[self.current_gun_index]:do_real_shot(self)
                 else
-                    logging.log(logging.ERROR, "chaingun firing error")
+                    log(ERROR, "chaingun firing error")
                     self.chaingun_firing = false
                 end
             end

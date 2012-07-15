@@ -5,7 +5,7 @@ struct obj : vertmodel, vertloader<obj>
     obj(const char *name) : vertmodel(name) {}
 
     static const char *formatname() { return "obj"; }
-    static bool animated() { return false; }
+    static bool cananimate() { return false; }
     int type() const { return MDL_OBJ; }
 
     struct objmeshgroup : vertmeshgroup
@@ -196,16 +196,16 @@ struct obj : vertmodel, vertloader<obj>
         defformatstring(cfgname)("data/models/%s/obj.lua", loadname); // INTENSITY
 
         loading = this;
-        var::persistvars = false;
+        varsys::persistvars = false;
         if(tools::execfile(cfgname, false) && parts.length()) // INTENSITY configured obj, will call the obj* commands below
         {
-            var::persistvars = true;
+            varsys::persistvars = true;
             loading = NULL;
             loopv(parts) if(!parts[i]->meshes) return false;
         }
         else // obj without configuration, try default tris and skin
         {
-            var::persistvars = true;
+            varsys::persistvars = true;
             loading = NULL;
             if(!loaddefaultparts()) return false;
         }

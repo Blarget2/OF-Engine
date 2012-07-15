@@ -240,7 +240,7 @@ character = class.new(entity_animated.base_animated, {
             <activate>
     ]]
     init = function(self, uid, kwargs)
-        logging.log(logging.DEBUG, "character:init")
+        log(DEBUG, "character:init")
         entity_animated.base_animated.init(self, uid, kwargs)
 
         -- initial properties set by server, _name is set even later
@@ -278,7 +278,7 @@ character = class.new(entity_animated.base_animated, {
             <init>
     ]]
     activate = function(self, kwargs)
-        logging.log(logging.DEBUG, "character:activate")
+        log(DEBUG, "character:activate")
 
         -- client number is set when character gets activated
         -- once again, asserting valid value
@@ -292,7 +292,7 @@ character = class.new(entity_animated.base_animated, {
         entity_animated.base_animated.activate(self, kwargs)
         self:flush_queued_state_variable_changes()
 
-        logging.log(logging.DEBUG, "character:activate complete.")
+        log(DEBUG, "character:activate complete.")
     end,
 
     --[[!
@@ -358,7 +358,7 @@ character = class.new(entity_animated.base_animated, {
     act = function(self, seconds)
         -- if we're empty, we run default_action, which
         -- does nothing by default (but can be overriden)
-        if self.action_system:is_empty() then
+        if #self.action_system:get() == 0 then
             self:default_action(seconds)
         else
             -- otherwise we act on parent
@@ -402,7 +402,7 @@ character = class.new(entity_animated.base_animated, {
         if not hudpass and needhud then return nil end
 
         -- re-generate the parameters if timestamp changed - efficiency
-        if self.rendering_args_timestamp ~= GLOBAL_CURRENT_TIMESTAMP then
+        if self.rendering_args_timestamp ~= frame.get_frame() then
             -- this is current client state, used when deciding animation
             local state = self.client_state
 
@@ -469,7 +469,7 @@ character = class.new(entity_animated.base_animated, {
                 self, mdlname, anim, o,
                 yaw, pitch, flags, basetime
             }
-            self.rendering_args_timestamp = GLOBAL_CURRENT_TIMESTAMP
+            self.rendering_args_timestamp = frame.get_frame()
         end
 
         -- render only when model is set using the rendering arguments table
@@ -496,8 +496,7 @@ character = class.new(entity_animated.base_animated, {
             <render_dynamic>
     ]]
     get_rendering_flags = function(self, hudpass, needhud)
-        -- we use dynamic shadow and lighting always.
-        local flags = math.bor(model.LIGHT, model.DYNSHADOW, model.FULLBRIGHT)
+        local flags = model.FULLBRIGHT
 
         -- for non-player, we add some culling flags
         if self ~= entity_store.get_player_entity() then
@@ -507,11 +506,6 @@ character = class.new(entity_animated.base_animated, {
                 model.CULL_OCCLUDED,
                 model.CULL_QUERY
             )
-        end
-
-        -- for hud models, we set hud flag
-        if hudpass and needhud then
-            flags = math.bor(flags, model.HUD)
         end
 
         -- return final flags
@@ -554,10 +548,10 @@ character = class.new(entity_animated.base_animated, {
         if state == CLIENT_STATE.EDITING
         or state == CLIENT_STATE.SPECTATOR then
             -- in editing and spec mode, use edit animation and loop it
-            anim = math.bor(actions.ANIM_EDIT, actions.ANIM_LOOP)
+            anim = math.bor(model.ANIM_EDIT, model.ANIM_LOOP)
         elseif state == CLIENT_STATE.LAGGED then
             -- in lagged state, loop lag animation
-            anim = math.bor(actions.ANIM_LAG, actions.ANIM_LOOP)
+            anim = math.bor(model.ANIM_LAG, model.ANIM_LOOP)
         else
             -- more complex deciding
             if in_water ~= 0 and pstate <= PHYSICAL_STATE.FALL then
@@ -568,11 +562,11 @@ character = class.new(entity_animated.base_animated, {
                     math.lsh(
                         math.bor(
                             ((move or strafe) or vel.z + falling.z > 0)
-                                and actions.ANIM_SWIM
-                                or  actions.ANIM_SINK,
-                            actions.ANIM_LOOP
+                                and model.ANIM_SWIM
+                                or  model.ANIM_SINK,
+                            model.ANIM_LOOP
                         ),
-                        actions.ANIM_SECONDARY
+                        model.ANIM_SECONDARY
                     )
                 )
             elseif time_in_air > 250 then
@@ -582,10 +576,10 @@ character = class.new(entity_animated.base_animated, {
                     anim,
                     math.lsh(
                         math.bor(
-                            actions.ANIM_JUMP,
-                            actions.ANIM_END
+                            model.ANIM_JUMP,
+                            model.ANIM_END
                         ),
-                        actions.ANIM_SECONDARY
+                        model.ANIM_SECONDARY
                     )
                 )
             elseif move ~= 0 or strafe ~= 0 then
@@ -596,8 +590,8 @@ character = class.new(entity_animated.base_animated, {
                     anim = math.bor(
                         anim,
                         math.lsh(
-                            math.bor(actions.ANIM_FORWARD, actions.ANIM_LOOP),
-                            actions.ANIM_SECONDARY
+                            math.bor(model.ANIM_FORWARD, model.ANIM_LOOP),
+                            model.ANIM_SECONDARY
                         )
                     )
                 elseif strafe ~= 0 then
@@ -608,9 +602,9 @@ character = class.new(entity_animated.base_animated, {
                         math.lsh(
                             math.bor(
                                 (strafe > 0 and ANIM_LEFT or ANIM_RIGHT),
-                                actions.ANIM_LOOP
+                                model.ANIM_LOOP
                             ),
-                            actions.ANIM_SECONDARY
+                            model.ANIM_SECONDARY
                         )
                     )
                 elseif move < 0 then
@@ -619,31 +613,31 @@ character = class.new(entity_animated.base_animated, {
                     anim = math.bor(
                         anim,
                         math.lsh(
-                            math.bor(actions.ANIM_BACKWARD, actions.ANIM_LOOP),
-                            actions.ANIM_SECONDARY
+                            math.bor(model.ANIM_BACKWARD, model.ANIM_LOOP),
+                            model.ANIM_SECONDARY
                         )
                     )
                 end
             end
 
-            if  math.band(anim, actions.ANIM_INDEX) == actions.ANIM_IDLE
+            if  math.band(anim, model.ANIM_INDEX) == model.ANIM_IDLE
             and math.band(
-                math.rsh(anim, actions.ANIM_SECONDARY),
-                actions.ANIM_INDEX
+                math.rsh(anim, model.ANIM_SECONDARY),
+                model.ANIM_INDEX
             ) ~= 0 then
-                anim = math.rsh(anim, actions.ANIM_SECONDARY)
+                anim = math.rsh(anim, model.ANIM_SECONDARY)
             end
         end
 
         if math.band(
-            math.rsh(anim, actions.ANIM_SECONDARY),
-            actions.ANIM_INDEX
+            math.rsh(anim, model.ANIM_SECONDARY),
+            model.ANIM_INDEX
         ) == 0 then
             anim = math.bor(
                 anim,
                 math.lsh(
-                    math.bor(actions.ANIM_IDLE, actions.ANIM_LOOP),
-                    actions.ANIM_SECONDARY
+                    math.bor(model.ANIM_IDLE, model.ANIM_LOOP),
+                    model.ANIM_SECONDARY
                 )
             )
         end
@@ -749,7 +743,7 @@ player = class.new(character, {
             <character.init>
     ]]
     init = function(self, uid, kwargs)
-        logging.log(logging.DEBUG, "player:init")
+        log(DEBUG, "player:init")
         -- init on parent, then add its own properties
         character.init(self, uid, kwargs)
 

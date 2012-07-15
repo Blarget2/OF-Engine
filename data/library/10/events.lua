@@ -1,6 +1,6 @@
 module("events", package.seeall)
 
-repeating_timer = class.new(nil, {
+repeating_timer = table.classify({
     __tostring = function(self)
         return string.format(
             "repeating_timer: %s %s %s",
@@ -36,89 +36,89 @@ repeating_timer = class.new(nil, {
 
 -- action that can queue more actions on itself, which run on its actor,
 -- finishes when both this action an all subactions are done.
-action_container = class.new(actions.action, {
+action_container = table.subclass(actions.Action, {
     __init = function(self, other_actions, kwargs)
-        actions.action.__init(self, kwargs)
+        actions.Action.__init(self, kwargs)
         self.other_actions = other_actions
     end,
 
-    do_start = function(self)
-        self.action_system = actions.action_system(self.actor)
+    start = function(self)
+        self.action_system = actions.Action_System(self.actor)
 
         for k, other_action in pairs(self.other_actions) do
             self.action_system:queue(other_action)
         end
     end,
 
-    do_execute = function(self, seconds)
-        self.action_system:manage(seconds)
-        return actions.action.do_execute(self, seconds)
-           and self.action_system:is_empty()
+    run = function(self, seconds)
+        self.action_system:run(seconds)
+        return actions.Action.run(self, seconds)
+           and #self.action_system:get() == 0
     end,
 
-    do_finish = function(self)
-        if not self.action_system:is_empty()
-           and self.action_system.action_list[1].begun then
-            self.action_system.action_list[1]:finish()
+    finish = function(self)
+        local sys = self.action_system:get()
+        if not #sys == 0 and sys[1].begun then
+            sys[1]:finish()
         end
     end,
 
     cancel = function(self)
         self.action_system:clear()
-        self.action_system:manage(0.01)
+        self.action_system:run(0.01)
         self:finish()
     end
 }, "action_container")
 
 -- like action_container, but runs actions in parallel - finishes when all are done
-action_parallel = class.new(actions.action, {
+action_parallel = table.subclass(actions.Action, {
     cancellable = false,
 
     __init = function(self, other_actions, kwargs)
-        actions.action.__init(self, kwargs)
+        actions.Action.__init(self, kwargs)
         self.action_systems = {}
         self.other_actions  = other_actions
     end,
 
-    do_start = function(self)
+    start = function(self)
         for k, other_action in pairs(self.other_actions) do
             self:add_action(other_action)
         end
     end,
 
-    do_execute = function(self, seconds)
-        self.action_systems = table.filter_dict(
+    run = function(self, seconds)
+        self.action_systems = table.filter(
             self.action_systems,
             function(i, action_system)
-                action_system:manage(seconds)
-                return (not action_system:is_empty())
+                action_system:run(seconds)
+                return (not (#action_system:get() == 0))
             end
         )
-        return actions.action.do_execute(self, seconds)
+        return actions.Action.run(self, seconds)
          and (#self.action_systems == 0)
     end,
 
-    do_finish = function(self)
+    finish = function(self)
         for k, action_system in pairs(self.action_systems) do
             action_system:clear()
         end
     end,
 
     add_action = function(self, other_action)
-        local action_system = actions.action_system(self.actor)
+        local action_system = actions.Action_System(self.actor)
         action_system:queue(other_action)
         table.insert(self.action_systems, action_system)
     end
 }, "action_parallel")
 
-action_delayed = class.new(actions.action, {
+action_delayed = table.subclass(actions.Action, {
     __init = function(self, command, kwargs)
-        actions.action.__init(self, kwargs)
+        actions.Action.__init(self, kwargs)
         self.command = command
     end,
 
-    do_execute = function(self, seconds)
-        if actions.action.do_execute(self, seconds) then
+    run = function(self, seconds)
+        if actions.Action.run(self, seconds) then
             self.command()
             return true
         else
@@ -128,7 +128,7 @@ action_delayed = class.new(actions.action, {
 }, "action_delayed")
 
 action_input_capture_plugin = {
-    do_start = function(self)
+    start = function(self)
         if self.client_click then
             self.old_client_click = _G["client_click"]
             _G["client_click"] = function(...) self.client_click(self, ...) end
@@ -154,7 +154,7 @@ action_input_capture_plugin = {
         end
     end,
 
-    do_finish = function(self)
+    finish = function(self)
         if self.client_click then
             _G["client_click"] = self.old_client_click
         end
@@ -175,15 +175,15 @@ action_input_capture_plugin = {
     end
 }
 
-action_input_capture = class.new(
-    actions.action,
+action_input_capture = table.subclass(
+    actions.Action,
     action_input_capture_plugin,
     "action_input_capture"
 )
 
 action_render_capture_plugin = {
-    do_start = function(self, ...)
-        self.__base.do_start(self, ...)
+    start = function(self, ...)
+        self.base_class.start(self, ...)
 
         if  self.render_dynamic then
             self.render_dynamic_old     = entity_store.render_dynamic
@@ -195,7 +195,7 @@ action_render_capture_plugin = {
         end
     end,
 
-    do_finish = function(self, ...)
+    finish = function(self, ...)
         if self.render_dynamic then
             entity_store.render_dynamic = self.render_dynamic_old
         end
@@ -203,23 +203,23 @@ action_render_capture_plugin = {
             entity_store.render_hud_model = self.render_hud_model_old
         end
 
-        self.__base.do_finish(self, ...)
+        self.base_class.finish(self, ...)
     end
 }
 
 action_system_plugin = {
     __init = function(self, owner)
-        self.action_system = actions.action_system(owner and owner or self)
+        self.action_system = actions.Action_System(owner and owner or self)
     end,
 
     tick = function(self, seconds)
-        self.action_system:manage(seconds)
+        self.action_system:run(seconds)
     end
 }
 
-_action_system_parallel_manager = class.new(class.new(nil, action_system_plugin), {
+_action_system_parallel_manager = table.subclass(table.classify(action_system_plugin), {
     __init = function(self, owner)
-        self.__base.__init(self, owner)
+        self.base_class.__init(self, owner)
 
         self.action = action_parallel({})
         self.action_system:queue(self.action)
@@ -241,7 +241,7 @@ client_actions_parallel_plugin = {
     end
 }
 
-actions_parallel_plugin = table.merge_dicts(client_actions_parallel_plugin, {
+actions_parallel_plugin = table.merge_maps(client_actions_parallel_plugin, {
     activate = client_actions_parallel_plugin.client_activate,
     act = client_actions_parallel_plugin.client_act
 })

@@ -3,7 +3,7 @@ library.include("projectiles")
 
 module("rocket_launcher", package.seeall)
 
-rocket = class.new(projectiles.projectile, {
+rocket = table.subclass(projectiles.projectile, {
     radius          = 2,
     visual_radius   = 20,
     color           = 0xDCBBAA,
@@ -26,12 +26,10 @@ rocket = class.new(projectiles.projectile, {
     render_dynamic = function(self)
         local o     = self.position
         local flags = math.bor(
-            model.LIGHT,
             model.CULL_VFC,
             model.CULL_OCCLUDED,
             model.FULLBRIGHT,
-            model.CULL_DIST,
-            model.DYNSHADOW
+            model.CULL_DIST
         )
         local yaw_pitch = self.velocity:to_yaw_pitch()
         local yaw       = yaw_pitch.yaw - 90
@@ -40,7 +38,7 @@ rocket = class.new(projectiles.projectile, {
         local args      = {
             self.owner,
             "guns/rocket",
-            math.bor(actions.ANIM_IDLE, actions.ANIM_LOOP),
+            math.bor(model.ANIM_IDLE, model.ANIM_LOOP),
             o,
             yaw,
             pitch,
@@ -51,13 +49,13 @@ rocket = class.new(projectiles.projectile, {
     end,
 
     render = function(self)
-        if edit.get_material(self.position) == edit.MATERIAL_WATER then
-            effects.regular_splash(
-                effects.PARTICLE.BUBBLE,
-                4, 0.5, self.position,
-                0xFFFFFF, 0.5, 25, 500
-            )
-        else
+        --if edit.get_material(self.position) == edit.MATERIAL_WATER then
+        --    effects.regular_splash(
+        --        effects.PARTICLE.BUBBLE,
+        --        4, 0.5, self.position,
+        --        0xFFFFFF, 0.5, 25, 500
+        --    )
+        --else
             effects.splash(
                 effects.PARTICLE.SMOKE,
                 2, 0.3, self.position,
@@ -70,18 +68,18 @@ rocket = class.new(projectiles.projectile, {
                 0xBB8877, 2, 3, 100, 0.4,
                 -6
             )
-        end
+        --end
         effects.dynamic_light(
             self.position, self.visual_radius * 1.8, self.color
         )
     end
 })
 
-action_rocket_fire = class.new(events.action_parallel, {
+action_rocket_fire = table.subclass(events.action_parallel, {
     can_multiply_queue = false
 }, "action_rocket_fire")
 
-rocket_launcher = class.new(projectiles.gun, {
+rocket_launcher = table.subclass(projectiles.gun, {
     projectile_class = rocket,
     delay            = 0.5,
     repeating        = false,
@@ -125,13 +123,13 @@ rocket_launcher = class.new(projectiles.gun, {
                 )
 
                 if shooter.radius > 0 then
-                    logging.log(logging.DEBUG, "adjusting rocket origin")
+                    log(DEBUG, "adjusting rocket origin")
                     local shooter_position = shooter.position:copy()
                     shooter_position.z = current_origin_position.z
                     local dir = shooter_position:sub_new(
                         current_origin_position
                     )
-                    local dist = dir:magnitude()
+                    local dist = dir:length()
                         + self.projectile_class.radius
 
                     if dist > shooter.radius then

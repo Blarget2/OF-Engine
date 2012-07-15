@@ -105,12 +105,12 @@ rain = {
                     amount = max_amount - #self.drops
                 end
                 for i = 1, amount do
-                    local origin = math.vec3(
+                    local origin = math.Vec3(
                         lx + math.random() * dx,
                         ly + math.random() * dy,
                         wsize
                     )
-                    local floor_dist = math.get_floor_distance(
+                    local floor_dist = math.floor_distance(
                         origin, wsize * 2
                     )
                     if floor_dist < 0 then floor_dist = wsize end
@@ -128,8 +128,8 @@ rain = {
             seconds_before = 0,
             seconds_between = 0,
             func = function(_self)
-                local delta = GLOBAL_CURRENT_TIMEDELTA
-                self.drops = table.filter_dict(self.drops, function(k, drop)
+                local delta = frame.get_frame_time()
+                self.drops = table.filter(self.drops, function(k, drop)
                     local bottom = drop.position:copy()
                     bottom.z = bottom.z - kwargs.size
                     bottom.x = bottom.x - kwargs.x_tilt

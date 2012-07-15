@@ -603,6 +603,41 @@ void rundedicatedserver()
 #endif
 }
 
+#ifdef WIN32
+static char *parsecommandline(const char *src, vector<char *> &args)
+{
+    char *buf = new char[strlen(src) + 1], *dst = buf;
+    for(;;)
+    {
+        while(isspace(*src)) src++;
+        if(!*src) break;
+        args.add(dst);
+        for(bool quoted = false; *src && (quoted || !isspace(*src)); src++)
+        {
+            if(*src != '"') *dst++ = *src;
+            else if(dst > buf && src[-1] == '\\') dst[-1] = '"';
+            else quoted = !quoted;
+        }
+        *dst++ = '\0';
+    }
+    args.add(NULL);
+    return buf;
+}
+
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
+{
+    vector<char *> args;
+    char *buf = parsecommandline(GetCommandLine(), args);
+
+    SDL_SetModuleHandle(hInst);
+    int status = SDL_main(args.length()-1, args.getbuf());
+
+    delete[] buf;
+    exit(status);
+    return 0;
+}
+#endif
+
 bool servererror(bool dedicated, const char *desc)
 {
 #ifndef STANDALONE
@@ -619,7 +654,7 @@ bool servererror(bool dedicated, const char *desc)
   
 bool setuplistenserver(bool dedicated)
 {
-    ENetAddress address = { ENET_HOST_ANY, serverport <= 0 ? enet_uint16(server::serverport()) : enet_uint16(serverport) };
+    ENetAddress address = { ENET_HOST_ANY, enet_uint16(serverport <= 0 ? server::serverport() : serverport) };
     if(serverip[0])
     {
         if(enet_address_set_host(&address, serverip)<0) conoutf(CON_WARN, "WARNING: server ip not resolved");
@@ -813,7 +848,7 @@ int main(int argc, char **argv)
     }
 
     logger::log(logger::WARNING, "Stopping main server.");
-    var::flush();
+    varsys::flush();
 
     return 0;
 }

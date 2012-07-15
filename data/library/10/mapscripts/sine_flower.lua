@@ -3,11 +3,11 @@
 -- author: q66 <quaker66@gmail.com>
 
 -- Create a custom player class
-myplayer = class.new(character.player, "myplayer")
+myplayer = class.new(character.player, nil, "myplayer")
 
 -- Called right after initialization on client
 function myplayer:client_activate(kwargs)
-    self.__base.client_activate(self, kwargs)
+    self.base_class.client_activate(self, kwargs)
     -- Current rotation angle
     self.angle = 1
     -- Current circle radius
@@ -18,7 +18,7 @@ end
 
 -- Called every frame on client after initialization
 function myplayer:client_act(sec)
-    self.__base.client_act(self, sec)
+    self.base_class.client_act(self, sec)
     -- Loop just until radius reaches 60, so it doesn't take too long.
     -- Make bigger for bigger circles
     if self.circle_rad <= 60 then
@@ -52,7 +52,7 @@ end
 entity_classes.register(myplayer, "fpsent")
 
 -- Notify the engine that we're overriding player by setting engine variable
-player_class = "myplayer"
+EVAR.player_class = "myplayer"
 
 -- This way you can disable gravity, not needed, default value is 200
 -- world.gravity = 0

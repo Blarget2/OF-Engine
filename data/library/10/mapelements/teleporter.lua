@@ -15,12 +15,12 @@ plugin = {
         if self.destination >= 1 then
             local destinations = entity_store.get_all_by_tag("teledest_" .. self.destination)
             if #destinations == 0 then
-                logging.log(logging.ERROR, "No teleport destination found.")
+                log(ERROR, "No teleport destination found.")
                 return nil
             end
 
             local destnum = math.random(1, #destinations)
-            collider.position = destinations[destnum].position:as_array()
+            collider.position = destinations[destnum].position:to_array()
             collider.yaw      = destinations[destnum].yaw
             collider.velocity = { 0, 0, 0 }
 

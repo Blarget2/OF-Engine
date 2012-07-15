@@ -2,9 +2,9 @@
 
 struct elementset
 {
-    ushort texture, lmid, envmap;
+    ushort texture, envmap;
     uchar dim, layer;
-    ushort length[2], minvert[2], maxvert[2];
+    ushort length, minvert, maxvert;
 };
 
 enum
@@ -24,15 +24,9 @@ struct materialsurface
 
     ivec o;
     ushort csize, rsize;
-    union
-    {
-        short index;
-        short depth;
-    };
     uchar material, orient, flags, skip;
     union
     {
-        entity *light;
         ushort envmap;
         uchar ends;
     };
@@ -40,12 +34,12 @@ struct materialsurface
 
 struct vertinfo
 {
-    ushort x, y, z, u, v, norm;
+    ushort x, y, z, norm;
 
     void setxyz(ushort a, ushort b, ushort c) { x = a; y = b; z = c; }
     void setxyz(const ivec &v) { setxyz(v.x, v.y, v.z); }
-    void set(ushort a, ushort b, ushort c, ushort s = 0, ushort t = 0, ushort n = 0) { setxyz(a, b, c); u = s; v = t; norm = n; }
-    void set(const ivec &v, ushort s = 0, ushort t = 0, ushort n = 0) { set(v.x, v.y, v.z, s, t, n); }
+    void set(ushort a, ushort b, ushort c, ushort n = 0) { setxyz(a, b, c); norm = n; }
+    void set(const ivec &v, ushort n = 0) { set(v.x, v.y, v.z, n); }
     ivec getxyz() const { return ivec(x, y, z); }
 };
 
@@ -53,40 +47,36 @@ enum
 {
     LAYER_TOP    = (1<<5),
     LAYER_BOTTOM = (1<<6),
-    LAYER_DUP    = (1<<7),
 
     LAYER_BLEND  = LAYER_TOP|LAYER_BOTTOM,
     
     MAXFACEVERTS = 15
 };
 
-enum { LMID_AMBIENT = 0, LMID_AMBIENT1, LMID_BRIGHT, LMID_BRIGHT1, LMID_DARK, LMID_DARK1, LMID_RESERVED };
-
 struct surfaceinfo
 {
-    uchar lmid[2];
     uchar verts, numverts;
 
-    int totalverts() const { return numverts&LAYER_DUP ? (numverts&MAXFACEVERTS)*2 : numverts&MAXFACEVERTS; }
-    bool used() const { return lmid[0] != LMID_AMBIENT || lmid[1] != LMID_AMBIENT || numverts&~LAYER_TOP; }
-    void clear() { lmid[0] = LMID_AMBIENT; lmid[1] = LMID_AMBIENT; numverts = (numverts&MAXFACEVERTS) | LAYER_TOP; }
-    void brighten() { lmid[0] = LMID_BRIGHT; lmid[1] = LMID_AMBIENT; numverts = (numverts&MAXFACEVERTS) | LAYER_TOP; }
+    int totalverts() const { return numverts&MAXFACEVERTS; }
+    bool used() const { return (numverts&~LAYER_TOP) != 0; }
+    void clear() { numverts = (numverts&MAXFACEVERTS) | LAYER_TOP; }
+    void brighten() { clear(); }
 };
 
-static const surfaceinfo ambientsurface = {{LMID_AMBIENT, LMID_AMBIENT}, 0, LAYER_TOP};
-static const surfaceinfo brightsurface = {{LMID_BRIGHT, LMID_AMBIENT}, 0, LAYER_TOP};
-static const surfaceinfo brightbottomsurface = {{LMID_AMBIENT, LMID_BRIGHT}, 0, LAYER_BOTTOM};
+static const surfaceinfo topsurface = {0, LAYER_TOP};
+static const surfaceinfo bottomsurface = {0, LAYER_BOTTOM};
+#define brightsurface topsurface
+#define ambientsurface topsurface
 
 struct grasstri
 {
     vec v[4];
     int numv;
-    vec4 tcu, tcv;
     plane surface;
     vec center;
     float radius;
     float minz, maxz;
-    ushort texture, lmid;
+    ushort texture, blend;
 };
 
 struct occludequery
@@ -134,7 +124,7 @@ struct vtxarray
 {
     vtxarray *parent;
     vector<vtxarray *> children;
-    vtxarray *next, *rnext; // linked list of visible VOBs
+    vtxarray *next, *rnext;  // linked list of visible VOBs
     vertex *vdata;           // vertex data
     ushort voffset;          // offset into vertex data
     ushort *edata, *skydata; // vertex indices
@@ -142,21 +132,22 @@ struct vtxarray
     ushort minvert, maxvert; // DRE info
     elementset *eslist;      // List of element indices sets (range) per texture
     materialsurface *matbuf; // buffer of material surfaces
-    int verts, tris, texs, blendtris, blends, alphabacktris, alphaback, alphafronttris, alphafront, texmask, sky, explicitsky, skyfaces, skyclip, matsurfs, distance;
-    double skyarea;
+    int verts, tris, texs, blendtris, blends, alphabacktris, alphaback, alphafronttris, alphafront, refracttris, refract, texmask, sky, matsurfs, matmask, distance, rdistance;
     ivec o;
     int size;                // location and size of cube.
     ivec geommin, geommax;   // BB of geom
-    ivec shadowmapmin, shadowmapmax; // BB of shadowmapped surfaces
-    ivec matmin, matmax;     // BB of any materials
+    ivec alphamin, alphamax; // BB of alpha geom
+    ivec refractmin, refractmax; // BB of refract geom
+    ivec lavamin, lavamax;   // BB of any lava
+    ivec watermin, watermax; // BB of any water
+    ivec glassmin, glassmax; // BB of any glass
     ivec bbmin, bbmax;       // BB of everything including children
     uchar curvfc, occluded;
     occludequery *query;
     vector<octaentities *> mapmodels;
     vector<grasstri> grasstris;
     int hasmerges, mergelevel;
-    uint dynlightmask;
-    bool shadowed;
+    int shadowmask;
 };
 
 struct cube;
@@ -299,4 +290,33 @@ enum
     PVS_PART_VISIBLE,
     PVS_FOGGED
 };
+
+#define GENCUBEVERTS(x0,x1, y0,y1, z0,z1) \
+    GENCUBEVERT(0, x1, y1, z0) \
+    GENCUBEVERT(1, x0, y1, z0) \
+    GENCUBEVERT(2, x0, y1, z1) \
+    GENCUBEVERT(3, x1, y1, z1) \
+    GENCUBEVERT(4, x1, y0, z1) \
+    GENCUBEVERT(5, x0, y0, z1) \
+    GENCUBEVERT(6, x0, y0, z0) \
+    GENCUBEVERT(7, x1, y0, z0)
+
+#define GENFACEVERTX(o,n, x,y,z, xv,yv,zv) GENFACEVERT(o,n, x,y,z, xv,yv,zv)
+#define GENFACEVERTSX(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEORIENT(0, GENFACEVERTX(0,0, x0,y1,z1, d0,r1,c1), GENFACEVERTX(0,1, x0,y1,z0, d0,r1,c0), GENFACEVERTX(0,2, x0,y0,z0, d0,r0,c0), GENFACEVERTX(0,3, x0,y0,z1, d0,r0,c1)) \
+    GENFACEORIENT(1, GENFACEVERTX(1,0, x1,y1,z1, d1,r1,c1), GENFACEVERTX(1,1, x1,y0,z1, d1,r0,c1), GENFACEVERTX(1,2, x1,y0,z0, d1,r0,c0), GENFACEVERTX(1,3, x1,y1,z0, d1,r1,c0))
+#define GENFACEVERTY(o,n, x,y,z, xv,yv,zv) GENFACEVERT(o,n, x,y,z, xv,yv,zv)
+#define GENFACEVERTSY(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEORIENT(2, GENFACEVERTY(2,0, x1,y0,z1, c1,d0,r1), GENFACEVERTY(2,1, x0,y0,z1, c0,d0,r1), GENFACEVERTY(2,2, x0,y0,z0, c0,d0,r0), GENFACEVERTY(2,3, x1,y0,z0, c1,d0,r0)) \
+    GENFACEORIENT(3, GENFACEVERTY(3,0, x0,y1,z0, c0,d1,r0), GENFACEVERTY(3,1, x0,y1,z1, c0,d1,r1), GENFACEVERTY(3,2, x1,y1,z1, c1,d1,r1), GENFACEVERTY(3,3, x1,y1,z0, c1,d1,r0))
+#define GENFACEVERTZ(o,n, x,y,z, xv,yv,zv) GENFACEVERT(o,n, x,y,z, xv,yv,zv)
+#define GENFACEVERTSZ(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEORIENT(4, GENFACEVERTZ(4,0, x0,y0,z0, r0,c0,d0), GENFACEVERTZ(4,1, x0,y1,z0, r0,c1,d0), GENFACEVERTZ(4,2, x1,y1,z0, r1,c1,d0), GENFACEVERTZ(4,3, x1,y0,z0, r1,c0,d0)) \
+    GENFACEORIENT(5, GENFACEVERTZ(5,0, x0,y0,z1, r0,c0,d1), GENFACEVERTZ(5,1, x1,y0,z1, r1,c0,d1), GENFACEVERTZ(5,2, x1,y1,z1, r1,c1,d1), GENFACEVERTZ(5,3, x0,y1,z1, r0,c1,d1))
+#define GENFACEVERTSXY(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEVERTSX(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEVERTSY(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1)
+#define GENFACEVERTS(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEVERTSXY(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1) \
+    GENFACEVERTSZ(x0,x1, y0,y1, z0,z1, c0,c1, r0,r1, d0,d1)
 

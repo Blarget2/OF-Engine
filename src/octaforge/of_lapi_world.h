@@ -156,6 +156,7 @@ namespace lapi_binds
                     attachentity(ent); \
             } \
         ) \
+        clearshadowcache(); \
     }
     #define addgroup(exp) \
     { \
@@ -258,10 +259,12 @@ namespace lapi_binds
     {
         groupeditpure(
             lapi::state.get<lua::Function>(
-                "entity_store", "get"
+                "LAPI", "World", "Entities", "get"
             ).call<lua::Table>(
                 LogicSystem::getUniqueId(&ent)
-            )["position"] = ent.o;
+            )[lapi::state.get<lua::Object>(
+                "LAPI", "World", "Entity", "Properties", "position"
+            )] = ent.o;
         );
     }
 

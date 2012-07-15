@@ -1,24 +1,24 @@
 module("health", package.seeall)
 
-action_pain = class.new(entity_animated.action_local_animation, {
+action_pain = table.subclass(entity_animated.action_local_animation, {
     seconds_left       = 0.6,
-    local_animation    = actions.ANIM_PAIN,
+    local_animation    = model.ANIM_PAIN,
     can_multiply_queue = false
 }, "action_pain")
 
-action_death = class.new(actions.action, {
+action_death = table.subclass(actions.Action, {
     can_multiply_queue = false,
     cancellable        = false,
     seconds_left       = 5.5,
 
-    do_start = function(self)
-        self.actor:emit("fragged")
+    start = function(self)
+        signal.emit(self.actor, "fragged")
         -- this won't clear us, as we cannot be cancelled
         self.actor:clear_actions()
         self.actor.can_move = false
     end,
 
-    do_finish = function(self)
+    finish = function(self)
         self.actor:respawn()
     end
 }, "action_death")
@@ -45,14 +45,14 @@ plugin = {
                     if  self.default_model_name then
                         self.model_name  = ""
                     end
-                    self.animation   = math.bor(actions.ANIM_IDLE, actions.ANIM_LOOP)
+                    self.animation   = math.bor(model.ANIM_IDLE, model.ANIM_LOOP)
                     self.spawn_stage = 3
                 end
                 return true, "cancel_state_data_update"
             end
         elseif stage == 3 then -- client repositions etc.
             if CLIENT and self == entity_store.get_player_entity() then
-                self:emit("client_respawn")
+                signal.emit(self,"client_respawn")
                 self.spawn_stage = 4
             end
         elseif stage == 4 then -- server appears player and sets in motion
@@ -86,29 +86,29 @@ plugin = {
     end,
 
     activate = function(self)
-        self:connect(state_variables.get_on_modify_name("health"),      self.on_health)
-        self:connect(state_variables.get_on_modify_name("spawn_stage"), self.on_spawn_stage)
+        signal.connect(self,state_variables.get_on_modify_name("health"),      self.on_health)
+        signal.connect(self,state_variables.get_on_modify_name("spawn_stage"), self.on_spawn_stage)
     end,
 
     client_activate = function(self)
-        self:connect(state_variables.get_on_modify_name("health"),      self.on_health)
-        self:connect(state_variables.get_on_modify_name("spawn_stage"), self.on_spawn_stage)
+        signal.connect(self,state_variables.get_on_modify_name("health"),      self.on_health)
+        signal.connect(self,state_variables.get_on_modify_name("spawn_stage"), self.on_spawn_stage)
     end,
 
     decide_animation = function(self, ...)
         if self.health > 0 then
-            return self.__base.decide_animation(self, ...)
+            return self.base_class.decide_animation(self, ...)
         else
-            return math.bor(actions.ANIM_DYING, actions.ANIM_RAGDOLL)
+            return math.bor(model.ANIM_DYING, model.ANIM_RAGDOLL)
         end
     end,
 
     decide_action_animation = function(self, ...)
-        local ret = self.__base.decide_action_animation(self, ...)
+        local ret = self.base_class.decide_action_animation(self, ...)
 
         -- clean up if not dead
-        if self.health > 0 and (ret == actions.ANIM_DYING or ret == math.bor(actions.ANIM_DYING, actions.ANIM_RAGDOLL)) then
-            self:set_local_animation(math.bor(actions.ANIM_IDLE, actions.ANIM_LOOP))
+        if self.health > 0 and (ret == model.ANIM_DYING or ret == math.bor(model.ANIM_DYING, model.ANIM_RAGDOLL)) then
+            self:set_local_animation(math.bor(model.ANIM_IDLE, model.ANIM_LOOP))
             ret = self.animation
         end
 
@@ -177,8 +177,8 @@ plugin = {
     visual_pain_effect = function(self, health)
         local pos = self.position:copy()
         pos.z = pos.z + self.eye_height - 4
-        effects.splash(effects.PARTICLE.BLOOD, convert.tointeger((self.old_health - health) / 3), 1000, pos, self.blood_color, 2.96)
-        effects.decal(effects.DECAL.BLOOD, self.position, math.vec3(0, 0, 1), 7, self.blood_color)
+        effects.splash(effects.PARTICLE.BLOOD, tointeger((self.old_health - health) / 3), 1000, pos, self.blood_color, 2.96)
+        effects.decal(effects.DECAL.BLOOD, self.position, math.Vec3(0, 0, 1), 7, self.blood_color)
         if self == entity_store.get_player_entity() then effects.client_damage(0, self.old_health - health) end
     end,
 
